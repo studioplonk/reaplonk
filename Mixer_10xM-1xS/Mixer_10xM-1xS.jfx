@@ -1,0 +1,161 @@
+/*******************************************************************************
+*  Copyright 2007 - 2011, Philip S. Considine  
+*  adapted 2022, Till Bovermann  
+*  This program is free software: you can redistribute it and/or modify        *
+*  it under the terms of the GNU General Public License as published by        *
+*  the Free Software Foundation, either version 3 of the License, or           *
+*  (at your option) any later version.                                         *
+*                                                                              *
+*  This program is distributed in the hope that it will be useful,             *
+*  but WITHOUT ANY WARRANTY; without even the implied warranty of              *
+*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                *
+*  GNU General Public License (http://www.gnu.org/licenses/)for more details.  *
+*******************************************************************************/
+
+desc:10x Mono to 1x Stereo Mixer (plonk)
+tags: mixer gain pan
+author: LFSaw (adapted from IXix)
+about:
+  # 10 to 2-channel mixer
+  Individual level and pan controls for 10 channels.
+
+////////////////////////////////////////////////////////////////////////////////
+slider1:0<-120,30,0.1>Level 01 (dB)
+slider2:0<-120,30,0.1>Level 02 (dB)
+slider3:0<-120,30,0.1>Level 03 (dB)
+slider4:0<-120,30,0.1>Level 04 (dB)
+slider5:0<-120,30,0.1>Level 05 (dB)
+slider6:0<-120,30,0.1>Level 06 (dB)
+slider7:0<-120,30,0.1>Level 07 (dB)
+slider8:0<-120,30,0.1>Level 08 (dB)
+slider9:0<-120,30,0.1>Level 09 (dB)
+slider10:0<-120,30,0.1>Level 10 (dB)
+slider11:0.00000<0,1,0.01>Pan 01 L<>R
+slider12:0.11111<0,1,0.01>Pan 02 L<>R
+slider13:0.22222<0,1,0.01>Pan 03 L<>R
+slider14:0.33333<0,1,0.01>Pan 04 L<>R
+slider15:0.44444<0,1,0.01>Pan 05 L<>R
+slider16:0.55555<0,1,0.01>Pan 06 L<>R
+slider17:0.66666<0,1,0.01>Pan 07 L<>R
+slider18:0.77777<0,1,0.01>Pan 08 L<>R
+slider19:0.88888<0,1,0.01>Pan 09 L<>R
+slider20:1.00000<0,1,0.01>Pan 10 L<>R
+
+in_pin:input 1
+in_pin:input 2
+in_pin:input 3
+in_pin:input 4
+in_pin:input 5
+in_pin:input 6
+in_pin:input 7
+in_pin:input 8
+in_pin:input 9
+in_pin:input 10
+out_pin:output L
+out_pin:output R
+
+////////////////////////////////////////////////////////////////////////////////
+@init
+gainMin = -120;
+gainMax = 30;
+
+////////////////////////////////////////////////////////////////////////////////
+@slider
+
+// Clamp to repectable values
+slider1 = min(max(slider1, gainMin), gainMax);
+slider2 = min(max(slider2, gainMin), gainMax);
+slider3 = min(max(slider3, gainMin), gainMax);
+slider4 = min(max(slider4, gainMin), gainMax);
+slider5 = min(max(slider5, gainMin), gainMax);
+slider6 = min(max(slider6, gainMin), gainMax);
+slider7 = min(max(slider7, gainMin), gainMax);
+slider8 = min(max(slider8, gainMin), gainMax);
+slider9 = min(max(slider9, gainMin), gainMax);
+slider10 = min(max(slider10, gainMin), gainMax);
+
+slider11 = min(max(slider11, 0), 1);
+slider12 = min(max(slider12, 0), 1);
+slider13 = min(max(slider13, 0), 1);
+slider14 = min(max(slider14, 0), 1);
+slider15 = min(max(slider15, 0), 1);
+slider16 = min(max(slider16, 0), 1);
+slider17 = min(max(slider17, 0), 1);
+slider18 = min(max(slider18, 0), 1);
+slider19 = min(max(slider19, 0), 1);
+slider20 = min(max(slider20, 0), 1);
+
+//Calculate gains and pans
+gain1 = 2 ^ (slider1 / 6); L1 = sqrt(1 - slider11); R1 = sqrt(slider11); 
+gain2 = 2 ^ (slider2 / 6); L2 = sqrt(1 - slider12); R2 = sqrt(slider12);
+gain3 = 2 ^ (slider3 / 6); L3 = sqrt(1 - slider13); R3 = sqrt(slider13);
+gain4 = 2 ^ (slider4 / 6); L4 = sqrt(1 - slider14); R4 = sqrt(slider14);
+gain5 = 2 ^ (slider5 / 6); L5 = sqrt(1 - slider15); R5 = sqrt(slider15);
+gain6 = 2 ^ (slider6 / 6); L6 = sqrt(1 - slider16); R6 = sqrt(slider16);
+gain7 = 2 ^ (slider7 / 6); L7 = sqrt(1 - slider17); R7 = sqrt(slider17);
+gain8 = 2 ^ (slider8 / 6); L8 = sqrt(1 - slider18); R8 = sqrt(slider18);
+gain9 = 2 ^ (slider9 / 6); L9 = sqrt(1 - slider19); R9 = sqrt(slider19);
+gain10 = 2 ^ (slider10 / 6); L10 = sqrt(1 - slider20); R10 = sqrt(slider20);
+
+modL1 = gain1 * L1;
+modL2 = gain2 * L2;
+modL3 = gain3 * L3;
+modL4 = gain4 * L4;
+modL5 = gain5 * L5;
+modL6 = gain6 * L6;
+modL7 = gain7 * L7;
+modL8 = gain8 * L8;
+modL9 = gain9 * L9;
+modL10 = gain10 * L10;
+
+modR1 = gain1 * R1;
+modR2 = gain2 * R2;
+modR3 = gain3 * R3;
+modR4 = gain4 * R4;
+modR5 = gain5 * R5;
+modR6 = gain6 * R6;
+modR7 = gain7 * R7;
+modR8 = gain8 * R8;
+modR9 = gain9 * R9;
+modR10 = gain10 * R10;
+
+////////////////////////////////////////////////////////////////////////////////
+@sample
+
+// Catch the inputs
+in1 = spl0;
+in2 = spl1;
+in3 = spl2;
+in4 = spl3;
+in5 = spl4;
+in6 = spl5;
+in7 = spl6;
+in8 = spl7;
+in9 = spl8;
+in10 = spl9;
+
+// Do the left mix
+spl0 =   
+    (in1 * modL1) +
+    (in2 * modL2) +
+    (in3 * modL3) +
+    (in4 * modL4) +
+    (in5 * modL5) +
+    (in6 * modL6) +
+    (in7 * modL7) +
+    (in8 * modL8) +
+    (in9 * modL9) +
+    (in10 * modL10);
+
+// Do the right mix
+spl1 =   
+    (in1 * modR1) +
+    (in2 * modR2) +
+    (in3 * modR3) +
+    (in4 * modR4) +
+    (in5 * modR5) +
+    (in6 * modR6) +
+    (in7 * modR7) +
+    (in8 * modR8) +
+    (in9 * modR9) +
+    (in10 * modR10);
