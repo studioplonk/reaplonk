@@ -5,10 +5,8 @@ author: LFSaw
 about:
     # Phase Invert
     inverts the phase of the second (right) channel.
-
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
-
+license: LGPL 3.0
+link: https://plonk.studio
 
 in_pin:left input
 in_pin:right input

@@ -9,9 +9,8 @@ about:
     This effect does an equal power rotation so it also works well on 
     stereo sounds. 
     Inspired by the SuperCollider UGen "Rotate2".
-
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
+license: LGPL 3.0
+link: https://plonk.studio
 
 
 slider1:0.125<0, 1>rotate

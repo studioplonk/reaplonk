@@ -1,23 +1,11 @@
-/*******************************************************************************
-*  Copyright 2007 - 2011, Philip S. Considine  
-*  adapted 2022, Till Bovermann  
-*  This program is free software: you can redistribute it and/or modify        *
-*  it under the terms of the GNU General Public License as published by        *
-*  the Free Software Foundation, either version 3 of the License, or           *
-*  (at your option) any later version.                                         *
-*                                                                              *
-*  This program is distributed in the hope that it will be useful,             *
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of              *
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                *
-*  GNU General Public License (http://www.gnu.org/licenses/)for more details.  *
-*******************************************************************************/
-
 desc:10x Mono to 1x Stereo Mixer (plonk)
 tags: mixer gain pan
 author: LFSaw (adapted from IXix)
 about:
   # 10 to 2-channel mixer
   Individual level and pan controls for 10 channels.
+license: LGPL 3.0
+link: https://plonk.studio
 
 ////////////////////////////////////////////////////////////////////////////////
 slider1:0<-120,30,0.1>Level 01 (dB)

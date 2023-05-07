@@ -1,13 +1,12 @@
 version: 1.0.0
 desc: tanh Distortion (plonk.studio)
 tags: distortion processing stereo
-author: LFSaw
+author: LFSaw / plonk GmbH (2023)
 about:
     # tanh Distortion
 	Simple utility to add tanh-distortion to a signal.
-
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
+license: LGPL 3.0
+link: https://plonk.studio
 
 slider1:0 < 0, 50, 0.125 >Distortion (dB)
 slider2:0 < -30, 6, 0.125 >Gain (dB)

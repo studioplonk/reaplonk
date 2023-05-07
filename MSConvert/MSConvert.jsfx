@@ -8,9 +8,8 @@ about:
     Attenuation of the signal is equally distributed (-3dB) over both conversions, i.e. 
     `sig->MSConvert->MSConvert == sig`
     for unity gain values.
-
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
+license: LGPL 3.0
+link: https://plonk.studio
 
 slider1:0< -30, 6, 0.001 >Mid Gain (dB)
 slider2:0< -30, 6, 0.001 >Side Gain (dB)

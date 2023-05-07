@@ -5,10 +5,8 @@ author: LFSaw
 about:
   # 12 Channel Trimmer
   Individual trimming controls for 12 channels. Useful for (automated) gain control in a parent channel.
-
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
-
+license: LGPL 3.0
+link: https://plonk.studio
 
 slider1:0<-80,12,0.1>1 Trim (dB)
 slider2:0<-80,12,0.1>2 Trim (dB)
