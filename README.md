@@ -15,3 +15,9 @@ See [Packaging Documentation](https://github.com/cfillion/reapack-index/wiki/Pac
 ## Installation
 
 The URL to import in ReaPack is [https://github.com/studioplonk/reaplonk/raw/master/index.xml](https://github.com/studioplonk/reaplonk/raw/master/index.xml).
+
+
+## License
+
+Plugins are individually licensed (mostly LGPL-3). 
+See their respective sources for details.
