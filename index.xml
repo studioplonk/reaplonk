@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="plonk toolbox" commit="360b486f8a5d1a41b79f6a3c27d76746790a11dc">
+<index version="1" name="plonk toolbox" commit="a7bef9f09cb2e0447df2edbdb2726c734dd298d1">
+  <category name="12channel trim">
+    <reapack name="12channel trim.jsfx" type="effect" desc="12-channel Trim (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs36 12 Channel Trimmer\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Individual trimming controls for 12 channels. Useful for (automated) gain control in a parent channel.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="LFSaw" time="2023-05-07T19:25:06Z">
+        <source>https://github.com/studioplonk/reaplonk/raw/a7bef9f09cb2e0447df2edbdb2726c734dd298d1/12channel%20trim/12channel%20trim.jsfx</source>
+      </version>
+    </reapack>
+  </category>
   <category name="MSConvert">
     <reapack name="MSConvert.jsfx" type="effect" desc="MSConvert (plonk.studio)">
       <metadata>
@@ -14,6 +31,40 @@
       </metadata>
       <version name="1.0.0" author="LFSaw" time="2023-05-07T18:48:44Z">
         <source>https://github.com/studioplonk/reaplonk/raw/360b486f8a5d1a41b79f6a3c27d76746790a11dc/MSConvert/MSConvert.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="PhaseInvert">
+    <reapack name="PhaseInvert.jsfx" type="effect" desc="Phase Invert (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs36 Phase Invert\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 inverts the phase of the second (right) channel.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="LFSaw" time="2023-05-07T19:25:06Z">
+        <source>https://github.com/studioplonk/reaplonk/raw/a7bef9f09cb2e0447df2edbdb2726c734dd298d1/PhaseInvert/PhaseInvert.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Rotate">
+    <reapack name="Rotate.jsfx" type="effect" desc="Rotate (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs36 Rotate\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Simple utility to alter a stereo signals spatiality. Can be used for rotating an ambisonic B-format sound field around an axis. This effect does an equal power rotation so it also works well on stereo sounds. Inspired by the SuperCollider UGen "Rotate2".\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="LFSaw" time="2023-05-07T19:25:06Z">
+        <source>https://github.com/studioplonk/reaplonk/raw/a7bef9f09cb2e0447df2edbdb2726c734dd298d1/Rotate/Rotate.jsfx</source>
       </version>
     </reapack>
   </category>
@@ -33,21 +84,48 @@
       </version>
     </reapack>
   </category>
+  <category name="Stereo2Mono">
+    <reapack name="Stereo2Mono.jsfx" type="effect" desc="Stereo2Mono (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs36 Stereo2Mono\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="LFSaw" time="2023-05-07T19:25:06Z">
+        <source>https://github.com/studioplonk/reaplonk/raw/a7bef9f09cb2e0447df2edbdb2726c734dd298d1/Stereo2Mono/Stereo2Mono.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="tanhDistortion">
+    <reapack name="tanhDistortion.jsfx" type="effect" desc="tanh Distortion (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs36 tanh Distortion\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="LFSaw" time="2023-05-07T19:25:06Z">
+        <source>https://github.com/studioplonk/reaplonk/raw/a7bef9f09cb2e0447df2edbdb2726c734dd298d1/tanhDistortion/tanhDistortion.jsfx</source>
+      </version>
+    </reapack>
+  </category>
   <metadata>
     <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \b \fs36 plonk toolbox for REAPER\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Effect plugins brought to you by {\field{\*\fldinst{HYPERLINK "http://studioplonk.de"}}{\fldrslt{\ul
-studio plonk
+{\pard \ql \f0 \sa180 \li0 \fi0 Effect plugins brought to you by {\field{\*\fldinst{HYPERLINK "http://plonk.studio"}}{\fldrslt{\ul
+plonk.studio
 }}}
 .\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs32 Implemented plugins\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs28 RotMS\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Adjusts a stereo signal's spatiality. Attenuation of the signal in both internal MS/AB conversions is equally distributed (-3dB) for unity gain values.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs28 MSConvert\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Convert a stereo signal either from MS to AB or vice versa. Attenuation of the signal is equally distributed (-3dB) over both conversions, i.e. {\f1 sig->MSConvert->MSConvert == sig} for unity gain values.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \b \fs32 Installation\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The URL to import in ReaPack is {\field{\*\fldinst{HYPERLINK "https://github.com/studioplonk/reaplonk/raw/master/index.xml"}}{\fldrslt{\ul
 https://github.com/studioplonk/reaplonk/raw/master/index.xml
