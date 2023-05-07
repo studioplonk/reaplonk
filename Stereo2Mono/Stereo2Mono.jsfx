@@ -1,0 +1,40 @@
+version: 1.0.0
+desc: Stereo2Mono (plonk.studio)
+tags: utility processing stereo
+author: LFSaw
+about:
+    # Stereo2Mono
+	converts a stereo signal to a 2-channel mono signal.
+	-6dB and -3dB attenuation options are available.
+
+slider1:1 < 0, 1, 1{off,on} >Convert!
+slider2:0 < 0, 1, 1{-6dB,-3dB} >Attenuation
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+attenuation = 0.5;
+
+@slider
+(slider2 < 1) ? (
+	// -6dB
+	attenutaion = 0.5; 
+) : (
+	// -3dB
+	attenuation = 0.70794578438414; 
+);
+
+makeMono = slider1;
+
+@sample
+
+makeMono ? (
+	dry_l = spl0;
+	dry_r = spl1;
+
+	spl0 = ( dry_l + dry_r ) * attenuation;
+	spl1 = ( dry_l + dry_r ) * attenuation;
+)

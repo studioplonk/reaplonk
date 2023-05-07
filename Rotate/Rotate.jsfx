@@ -1,0 +1,30 @@
+version: 1.0.0
+desc: Rotate (plonk.studio)
+tags: utility processing stereo
+author: LFSaw
+about:
+    # Rotate
+    Simple utility to alter a stereo signals spatiality.
+    Can be used for rotating an ambisonic B-format sound field around an axis.
+    This effect does an equal power rotation so it also works well on 
+    stereo sounds. 
+    Inspired by the SuperCollider UGen "Rotate2".
+
+slider1:0.125<0, 1>rotate
+slider2:0<-80,6,0.25>Gain (db)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+@slider
+angle=slider1 * 2 * $pi;
+level=2^(slider2/6);
+
+@sample
+l=spl0;
+r=spl1;
+spl0= (cos(angle) * l + sin(angle) * r) * level;
+spl1= (cos(angle) * r - sin(angle) * l) * level;

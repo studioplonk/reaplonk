@@ -1,7 +1,7 @@
 version: 1.0.0
 desc: MSConvert (plonk.studio)
 tags: utility processing stereo
-author:LFSaw
+author: LFSaw
 about:
     # MSConvert 
     Convert a stereo signal either from Mid-Side to AB-format or vice versa. 

@@ -1,0 +1,55 @@
+version: 1.0.0
+desc: tanh Distortion (plonk.studio)
+tags: distortion processing stereo
+author: LFSaw
+about:
+    # tanh Distortion
+	Simple utility to add tanh-distortion to a signal.
+
+
+slider1:0 < 0, 50, 0.125 >Distortion (dB)
+slider2:0 < -30, 6, 0.125 >Gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+function dbamp (x)
+(
+	( x > -30 ) ? 2 ^ ( x / 6 ) : 0
+);
+
+function tanh(x)
+local(e2x)
+global()
+instance()
+(
+	e2x=exp(2*x);
+	(e2x-1)/(e2x+1);
+);
+
+// alternative implementation of tanh
+// function tanh_2(x)
+// local()
+// global()
+// instance()
+// (
+// 	2/(1+exp(-2*x)) - 1
+// );
+
+
+@slider
+pre_level = dbamp ( slider1 );
+post_level = dbamp ( slider2 );
+
+@sample
+dry_l = spl0;
+dry_r = spl1;
+
+wet_l = tanh ( dry_l * pre_level );
+wet_r = tanh ( dry_r * pre_level );
+
+spl0 = ( wet_l * post_level );
+spl1 = ( wet_r * post_level );

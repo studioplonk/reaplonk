@@ -1,0 +1,24 @@
+version: 1.0.0
+desc: Phase Invert (plonk.studio)
+tags: utility processing stereo
+author: LFSaw
+about:
+    # Phase Invert
+    inverts the phase of the second (right) channel.
+
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+
+@slider
+
+@block
+
+@sample
+spl0 = spl0;
+spl1 = -spl1;
+

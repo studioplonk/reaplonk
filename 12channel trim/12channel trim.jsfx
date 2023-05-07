@@ -1,0 +1,134 @@
+version: 1.0.0
+desc: 12-channel Trim (plonk.studio)
+tags: utility processing multichannel
+author: LFSaw
+about:
+  # 12 Channel Trimmer
+  Individual trimming controls for 12 channels. Useful for (automated) gain control in a parent channel.
+
+
+slider1:0<-80,12,0.1>1 Trim (dB)
+slider2:0<-80,12,0.1>2 Trim (dB)
+slider3:0<-80,12,0.1>3 Trim (dB)
+slider4:0<-80,12,0.1>4 Trim (dB)
+slider5:0<-80,12,0.1>5 Trim (dB)
+slider6:0<-80,12,0.1>6 Trim (dB)
+slider7:0<-80,12,0.1>7 Trim (dB)
+slider8:0<-80,12,0.1>8 Trim (dB)
+slider9:0<-80,12,0.1>9 Trim (dB)
+slider10:0<-80,12,0.1>10 Trim (dB)
+slider11:0<-80,12,0.1>11 Trim (dB)
+slider12:0<-80,12,0.1>12 Trim (dB)
+
+in_pin:in01
+in_pin:in02
+in_pin:in03
+in_pin:in04
+in_pin:in05
+in_pin:in06
+in_pin:in07
+in_pin:in08
+in_pin:in09
+in_pin:in10
+in_pin:in11
+in_pin:in12
+
+out_pin:out01
+out_pin:out02
+out_pin:out03
+out_pin:out04
+out_pin:out05
+out_pin:out06
+out_pin:out07
+out_pin:out08
+out_pin:out09
+out_pin:out10
+out_pin:out11
+out_pin:out12
+
+@init
+ext_tail_size = -2;
+
+@slider
+  adj01=2 ^ (slider1/6); 
+  adj02=2 ^ (slider2/6);
+  adj03=2 ^ (slider3/6); 
+  adj04=2 ^ (slider4/6);
+  adj05=2 ^ (slider5/6); 
+  adj06=2 ^ (slider6/6);
+  adj07=2 ^ (slider7/6); 
+  adj08=2 ^ (slider8/6);
+  adj09=2 ^ (slider9/6); 
+  adj10=2 ^ (slider10/6); 
+  adj11=2 ^ (slider11/6);
+  adj12=2 ^ (slider12/6); 
+  doseek < 0 ? doseek = 1;
+
+@block
+doseek > 0 ? (
+  dadj01=(adj01-adj01_s)/samplesblock;
+  dadj02=(adj02-adj02_s)/samplesblock;
+  dadj03=(adj03-adj03_s)/samplesblock;
+  dadj04=(adj04-adj04_s)/samplesblock;
+  dadj05=(adj05-adj05_s)/samplesblock;
+  dadj06=(adj06-adj06_s)/samplesblock;
+  dadj07=(adj07-adj07_s)/samplesblock;
+  dadj08=(adj08-adj08_s)/samplesblock;
+  dadj09=(adj09-adj09_s)/samplesblock;
+  dadj10=(adj10-adj10_s)/samplesblock;
+  dadj11=(adj11-adj11_s)/samplesblock;
+  dadj12=(adj12-adj12_s)/samplesblock;
+):(
+  dadj01=0;
+  dadj02=0;
+  dadj03=0;
+  dadj04=0;
+  dadj05=0;
+  dadj06=0;
+  dadj07=0;
+  dadj08=0;
+  dadj09=0;
+  dadj10=0;
+  dadj11=0;
+  dadj12=0;
+  adj01_s=adj01;
+  adj02_s=adj02;
+  adj03_s=adj03;
+  adj04_s=adj04;
+  adj05_s=adj05;
+  adj06_s=adj06;
+  adj07_s=adj07;
+  adj08_s=adj08;
+  adj09_s=adj09;
+  adj10_s=adj10;
+  adj11_s=adj11;
+  adj12_s=adj12;
+);
+doseek = -1;
+
+@sample
+spl0=spl0*adj1_s;
+spl1=spl1*adj2_s;
+spl2=spl2*adj3_s;
+spl3=spl3*adj4_s;
+spl4=spl4*adj5_s;
+spl5=spl5*adj6_s;
+spl6=spl6*adj7_s;
+spl7=spl7*adj8_s;
+spl8=spl8*adj9_s;
+spl9=spl9*adj10_s;
+spl10=spl10*adj11_s;
+spl11=spl11*adj12_s;
+
+adj01_s+=dadj01;
+adj02_s+=dadj02;
+adj03_s+=dadj03;
+adj04_s+=dadj04;
+adj05_s+=dadj05;
+adj06_s+=dadj06;
+adj07_s+=dadj07;
+adj08_s+=dadj08;
+adj09_s+=dadj09;
+adj10_s+=dadj10;
+adj11_s+=dadj11;
+adj12_s+=dadj12;
