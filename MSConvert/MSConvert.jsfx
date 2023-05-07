@@ -1,6 +1,3 @@
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
-
 version: 1.0.0
 desc: MSConvert (plonk.studio)
 tags: utility processing stereo
@@ -11,6 +8,9 @@ about:
     Attenuation of the signal is equally distributed (-3dB) over both conversions, i.e. 
     `sig->MSConvert->MSConvert == sig`
     for unity gain values.
+
+// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
+// See also Licenses/LGPL3.txt in the hosting repository.
 
 slider1:0< -30, 6, 0.001 >Mid Gain (dB)
 slider2:0< -30, 6, 0.001 >Side Gain (dB)

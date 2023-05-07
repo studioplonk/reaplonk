@@ -1,6 +1,3 @@
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
-
 version: 1.0.0
 desc: Rotate (plonk.studio)
 tags: utility processing stereo
@@ -12,6 +9,10 @@ about:
     This effect does an equal power rotation so it also works well on 
     stereo sounds. 
     Inspired by the SuperCollider UGen "Rotate2".
+
+// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
+// See also Licenses/LGPL3.txt in the hosting repository.
+
 
 slider1:0.125<0, 1>rotate
 slider2:0<-80,6,0.25>Gain (db)

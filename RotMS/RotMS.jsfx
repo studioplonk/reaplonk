@@ -1,6 +1,3 @@
-// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
-// See also Licenses/LGPL3.txt in the hosting repository.
-
 version: 1.0.0
 desc: RotMS (plonk.studio)
 tags: utility processing stereo
@@ -9,6 +6,9 @@ about:
     # RotMS 
 	Adjusts the spatiality of a stereo signal. 
 	Attenuation of the signal in both internal MS/AB conversions is equally distributed (-3dB) for unity gain values.
+
+// Copyright plonk GmbH (2023) Released under LGPL 3,  https://opensource.org/license/lgpl-3-0/
+// See also Licenses/LGPL3.txt in the hosting repository.
 
 slider1:0< 0, 1, 1{AB,MS}>input format
 slider2:0< -1, 1, 0.001>In Rotate
