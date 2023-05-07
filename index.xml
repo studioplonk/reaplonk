@@ -131,6 +131,8 @@ plonk.studio
 https://github.com/studioplonk/reaplonk/raw/master/index.xml
 }}}
 .\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs32 License\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Plugins are individually licensed (mostly LGPL-3). See their respective sources for details.\par}
 }
 ]]></description>
   </metadata>
