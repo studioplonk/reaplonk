@@ -1,0 +1,96 @@
+version: 1.0.0
+desc: RotMS (plonk.studio)
+tags: utility processing stereo
+author:LFSaw
+about:
+    # RotMS 
+	Adjusts the spatiality of a stereo signal. 
+	Attenuation of the signal in both internal MS/AB conversions is equally distributed (-3dB) for unity gain values.
+
+slider1:0< 0, 1, 1{AB,MS}>input format
+slider2:0< -1, 1, 0.001>In Rotate
+slider3:0< -1, 1, 0.001>Pan side
+slider4:0< -1, 1, 0.001>Pan mid
+slider5:0< -30, 6, 0.001 >Mid Gain (dB)
+slider6:0< -30, 6, 0.001 >Side Gain (dB)
+slider7:0< -1, 1, 0.001 >Out Rotate
+slider8:0< -40, 12,0.001 >Gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+msAttenuation = 0.70794578438414; // -3dB
+sqrt2div2 = sqrt(2)/2.0;
+function dbamp (x)
+(
+	( x > -30 ) ? 2 ^ ( x / 6 ) : 0
+);
+
+
+@slider
+inIsMS = slider1;
+
+inAngle = slider2 * $pi;
+inAngle_cos = cos(inAngle);
+inAngle_sin = sin(inAngle);
+
+outAngle = slider7 * $pi;
+outAngle_cos = cos(outAngle);
+outAngle_sin = sin(outAngle);
+
+volM    = dbamp ( slider5 );
+volS    = dbamp ( slider6 );
+postAmp = dbamp ( slider8 );
+
+pan_m = slider4 * 0.25 * $pi;
+panM_cos = cos(pan_m);
+panM_sin = sin(pan_m);
+panFacM_a = sqrt2div2 * (panM_cos - panM_sin);
+panFacM_b = sqrt2div2 * (panM_cos + panM_sin);
+
+pan_s = slider3 * 0.25 * $pi;
+panS_cos = cos(pan_s);
+panS_sin = sin(pan_s);
+panFacS_a = sqrt2div2 * (panS_cos - panS_sin);
+panFacS_b = sqrt2div2 * (panS_cos + panS_sin);
+
+@sample
+a = spl0;
+b = spl1;
+
+// in rotate
+a = ( inAngle_cos * a ) + ( inAngle_sin * b );
+b = ( inAngle_cos * b ) - ( inAngle_sin * a );
+
+inIsMS ? (
+	m = a * volM;;
+	s = b * volS;;
+) : (
+	// MS encoding & volume adjustment
+	m = ( a + b ) * msAttenuation * volM;
+	s = ( a - b ) * msAttenuation * volS;
+);
+
+
+// mid panning
+m_a = panFacM_a * m;
+m_b = panFacM_b * m;
+
+// side panning
+s_a = panFacS_a * s;
+s_b = panFacS_b * s;
+
+// MS decoding
+a = ( m_a + s_a ) * msAttenuation;
+b = ( m_b - s_b ) * msAttenuation;
+
+// out rotate
+a = ( outAngle_cos * a ) + ( outAngle_sin * b );
+b = ( outAngle_cos * b ) - ( outAngle_sin * a );
+
+
+spl0 = a * postAmp;
+spl1 = b * postAmp;
