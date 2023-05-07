@@ -1,6 +1,6 @@
 # plonk toolbox for REAPER
 
-Effect plugins brought to you by [studio plonk](http://studioplonk.de).
+Effect plugins brought to you by [plonk.studio](http://plonk.studio).
 
 ## Implemented plugins
 
