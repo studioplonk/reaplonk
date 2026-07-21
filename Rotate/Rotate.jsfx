@@ -1,0 +1,30 @@
+desc: Rotate (plonk.studio)
+version: 1.0
+author: LFSaw
+about:
+    # Rotate
+    Alter stereo spatiality with equal-power rotation.
+    Useful for rotating an ambisonic B-format sound field or widening stereo material.
+link: https://plonk.studio
+changelog:
+    - Initial release
+
+
+slider1:rotate=0.125<0, 1>rotate
+slider2:levelDb=0<-80,6,0.25>Gain (db)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+@slider
+angle=rotate * 2 * $pi;
+level=2^(levelDb/6);
+
+@sample
+l=spl0;
+r=spl1;
+spl0= (cos(angle) * l + sin(angle) * r) * level;
+spl1= (cos(angle) * r - sin(angle) * l) * level;

@@ -1,0 +1,148 @@
+desc: Stereo Utility (plonk.studio)
+version: 0.1
+author: LFSaw
+about:
+	# Stereo Utility
+	Utility processor similar to Ableton Utility.
+	- Gain
+	- Phase invert per channel
+	- Global mute/unmute
+	- Width (0% to 400%)
+	- Bass mono (50 Hz to 500 Hz)
+	- Balance
+	- DC offset removal
+	All automatable controls are smoothed per sample.
+link: https://plonk.studio
+changelog:
+	- Initial release
+
+slider1:mute=0<0,1,1>mute?
+slider2:phase_l=0<0,1,1>invert phase L?
+slider3:phase_r=0<0,1,1>invert phase R?
+slider4:gain_db=0<-65,12,0.1>gain (dB)
+slider5:width=100<0,400,0.1>width
+slider6:balance=0<-100,100,0.1>balance
+slider7:bass_mono=0<0,100,0.1>bass mono (%)
+slider8:bass_freq=120<50,500,0.1>xover (Hz)
+slider9:dc=0<0,1,1>remove DC?
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+ext_tail_size = -2;
+
+function dbamp(x)
+(
+	(x > -80) ? 2 ^ (x / 6) : 0;
+);
+
+dc_coef = 0.97 ^ (48000 / srate);
+
+gain_current = 1;
+phase_l_current = 1;
+phase_r_current = 1;
+mute_current = 1;
+width_current = 1;
+bass_mono_current = 0;
+bass_fc_current = 120;
+balance_current = 0;
+dc_mix_current = 0;
+
+gain_target = 1;
+phase_l_target = 1;
+phase_r_target = 1;
+mute_target = 1;
+width_target = 1;
+bass_fc_target = 120;
+balance_target = 0;
+dc_mix_target = 0;
+
+bass_lp_l = 0;
+bass_lp_r = 0;
+dc_prev_l = 0;
+dc_prev_r = 0;
+dc_state_l = 0;
+dc_state_r = 0;
+
+@slider
+gain_target = dbamp(gain_db);
+phase_l_target = phase_l ? -1 : 1;
+phase_r_target = phase_r ? -1 : 1;
+mute_target = mute ? 0 : 1;
+width_target = width * 0.01;
+bass_mono_target = bass_mono * 0.01;
+bass_fc_target = bass_freq;
+balance_target = balance * 0.01;
+dc_mix_target = dc ? 1 : 0;
+
+@block
+block_len = max(1, samplesblock);
+
+gain_step = (gain_target - gain_current) / block_len;
+phase_l_step = (phase_l_target - phase_l_current) / block_len;
+phase_r_step = (phase_r_target - phase_r_current) / block_len;
+mute_step = (mute_target - mute_current) / block_len;
+width_step = (width_target - width_current) / block_len;
+bass_mono_step = (bass_mono_target - bass_mono_current) / block_len;
+bass_fc_step = (bass_fc_target - bass_fc_current) / block_len;
+balance_step = (balance_target - balance_current) / block_len;
+dc_mix_step = (dc_mix_target - dc_mix_current) / block_len;
+
+@sample
+gain_current += gain_step;
+phase_l_current += phase_l_step;
+phase_r_current += phase_r_step;
+mute_current += mute_step;
+width_current += width_step;
+bass_mono_current += bass_mono_step;
+bass_fc_current += bass_fc_step;
+balance_current += balance_step;
+dc_mix_current += dc_mix_step;
+
+in_l = spl0 * phase_l_current;
+in_r = spl1 * phase_r_current;
+
+in_l *= gain_current;
+in_r *= gain_current;
+
+mid = (in_l + in_r) * 0.5;
+width_gain = sqrt(2 / (1 + width_current * width_current));
+mid = mid * width_gain;
+side = (in_l - in_r) * 0.5 * width_current * width_gain;
+
+wide_l = mid + side;
+wide_r = mid - side;
+
+balance_l = balance_current > 0 ? (1 - balance_current) : 1;
+balance_r = balance_current < 0 ? (1 + balance_current) : 1;
+
+balanced_l = wide_l * balance_l;
+balanced_r = wide_r * balance_r;
+
+bass_alpha = 1 - exp(-2 * $pi * bass_fc_current / srate);
+bass_lp_l += (balanced_l - bass_lp_l) * bass_alpha;
+bass_lp_r += (balanced_r - bass_lp_r) * bass_alpha;
+
+bass_low = (bass_lp_l + bass_lp_r) * 0.5;
+bass_corr = (2 * bass_lp_l * bass_lp_r) / (bass_lp_l * bass_lp_l + bass_lp_r * bass_lp_r + 0.00000000000000000001);
+bass_mono_amount = bass_mono_current * (0.5 + 0.5 * bass_corr);
+
+mono_l = balanced_l + (bass_low - bass_lp_l) * bass_mono_amount;
+mono_r = balanced_r + (bass_low - bass_lp_r) * bass_mono_amount;
+
+dc_out_l = mono_l - dc_prev_l + dc_coef * dc_state_l;
+dc_prev_l = mono_l;
+dc_state_l = dc_out_l;
+
+dc_out_r = mono_r - dc_prev_r + dc_coef * dc_state_r;
+dc_prev_r = mono_r;
+dc_state_r = dc_out_r;
+
+spl0 = mono_l + (dc_out_l - mono_l) * dc_mix_current;
+spl1 = mono_r + (dc_out_r - mono_r) * dc_mix_current;
+
+spl0 *= mute_current;
+spl1 *= mute_current;

@@ -1,0 +1,45 @@
+desc: MSConvert (plonk.studio)
+version: 1.0
+author: LFSaw
+about:
+	# MSConvert
+	Convert a stereo signal either from Mid-Side to AB-format or vice versa.
+	Attenuation is evenly distributed at -3 dB in both directions so that a unity-gain round trip preserves the signal.
+link: https://plonk.studio
+changelog:
+	- Initial release
+
+slider1:volMDb=0< -30, 6, 0.001 >Mid Gain (dB)
+slider2:volSDb=0< -30, 6, 0.001 >Side Gain (dB)
+slider3:postAmpDb=0< -30, 6, 0.001 >Gain (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+msAttenuation = 0.70794578438414; // -3dB
+sqrt2div2 = sqrt( 2 ) / 2.0;
+
+function dbamp (x)
+(
+	( x > -30 ) ? 2 ^ ( x / 6 ) : 0
+);
+
+@slider
+volM = dbamp ( volMDb );
+volS = dbamp ( volSDb );
+postAmp = dbamp ( postAmpDb );
+
+@sample
+m = spl0  * volM;
+s = spl1  * volS;
+
+// MS encoding & volume adjustment
+a = ( m + s );
+b = ( m - s );
+
+
+spl0 = a * postAmp * msAttenuation;
+spl1 = b * postAmp * msAttenuation;

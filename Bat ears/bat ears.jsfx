@@ -1,0 +1,71 @@
+desc: Bat Ears (plonk.studio)
+version: 1.0
+author: LFSaw
+about:
+  # Bat Ears
+  Heterodyning bat ears effect with strict Nyquist and audible monitor modes.
+  Designed for carrier-frequency ring modulation and ultrasonic monitoring.
+link: https://plonk.studio
+changelog:
+  - Initial release
+
+slider1:freq=20000<1000,40000,1>Carrier frequency (Hz)
+slider2:mode=1<0,1,1{Strict Nyquist,Audible monitor}>Mode
+slider3:monitorCutoff=6000<200,18000,1>Monitor low-pass cutoff (Hz)
+slider4:gainDB=18<-24,36,0.1>Output gain (dB)
+
+@init
+twoPi = 2 * $pi;
+phase = 0;
+
+@slider
+freq = min(freq, srate * 0.5);
+phaseInc = twoPi * freq / srate;
+monitorCutoff = min(monitorCutoff, srate * 0.5);
+gain = 10 ^ (gainDB / 20);
+
+// Simple first-order coefficients for cascaded filters.
+hpAlpha = exp(-2 * $pi * freq / srate);
+lpAlpha = exp(-2 * $pi * monitorCutoff / srate);
+
+@sample
+osc = sin(phase);
+phase += phaseInc;
+phase >= twoPi ? phase -= twoPi;
+
+// Nyquist: (mult *track* (hzosc 20000))
+inL = spl0 * osc;
+inR = spl1 * osc;
+
+mode == 0 ? (
+  // Strict Nyquist-like path: ring-modulate, then keep only ultrasonic content.
+  hpL1 = hpAlpha * (hpL1 + inL - hpLX1); hpLX1 = inL;
+  hpL2 = hpAlpha * (hpL2 + hpL1 - hpLX2); hpLX2 = hpL1;
+  hpL3 = hpAlpha * (hpL3 + hpL2 - hpLX3); hpLX3 = hpL2;
+  hpL4 = hpAlpha * (hpL4 + hpL3 - hpLX4); hpLX4 = hpL3;
+
+  hpR1 = hpAlpha * (hpR1 + inR - hpRX1); hpRX1 = inR;
+  hpR2 = hpAlpha * (hpR2 + hpR1 - hpRX2); hpRX2 = hpR1;
+  hpR3 = hpAlpha * (hpR3 + hpR2 - hpRX3); hpRX3 = hpR2;
+  hpR4 = hpAlpha * (hpR4 + hpR3 - hpRX4); hpRX4 = hpR3;
+
+  outL = hpL4;
+  outR = hpR4;
+) : (
+  // Audible heterodyne monitor: ring-modulate, then keep the difference band.
+  lpL1 += (1 - lpAlpha) * (inL - lpL1);
+  lpL2 += (1 - lpAlpha) * (lpL1 - lpL2);
+  lpL3 += (1 - lpAlpha) * (lpL2 - lpL3);
+  lpL4 += (1 - lpAlpha) * (lpL3 - lpL4);
+
+  lpR1 += (1 - lpAlpha) * (inR - lpR1);
+  lpR2 += (1 - lpAlpha) * (lpR1 - lpR2);
+  lpR3 += (1 - lpAlpha) * (lpR2 - lpR3);
+  lpR4 += (1 - lpAlpha) * (lpR3 - lpR4);
+
+  outL = lpL4;
+  outR = lpR4;
+);
+
+spl0 = outL * gain;
+spl1 = outR * gain;

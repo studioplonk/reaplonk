@@ -1,0 +1,43 @@
+desc: Stereo2Mono (plonk.studio)
+version: 1.0
+author: LFSaw
+about:
+	# Stereo2Mono
+	Convert stereo to dual-mono with selectable -6 dB or -3 dB attenuation.
+	Useful when you need a centered mono sum without losing level control.
+link: https://plonk.studio
+changelog:
+	- Initial release
+
+
+slider1:1 < 0, 1, 1{off,on} >Convert!
+slider2:0 < 0, 1, 1{-6dB,-3dB} >Attenuation
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+attenuation = 0.5;
+
+@slider
+(slider2 < 1) ? (
+	// -6dB
+	attenuation = 0.5;
+) : (
+	// -3dB
+	attenuation = 0.70794578438414;
+);
+
+makeMono = slider1;
+
+@sample
+
+makeMono ? (
+	dry_l = spl0;
+	dry_r = spl1;
+
+	spl0 = ( dry_l + dry_r ) * attenuation;
+	spl1 = ( dry_l + dry_r ) * attenuation;
+)

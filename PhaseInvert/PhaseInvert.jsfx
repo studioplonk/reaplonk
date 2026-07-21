@@ -1,0 +1,25 @@
+desc: Phase Invert (plonk.studio)
+version: 1.0
+author: LFSaw
+about:
+    # Phase Invert
+    Invert the phase of the right channel.
+link: https://plonk.studio
+changelog:
+    - Initial release
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+
+@slider
+
+@block
+
+@sample
+spl0 = spl0;
+spl1 = -spl1;
+
