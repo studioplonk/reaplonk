@@ -1,157 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="plonk toolbox" commit="e39a3b8bd731e38ce8fb91582f33558c98167e39">
-  <category name="12channel trim">
-    <reapack name="12channel trim.jsfx" type="effect" desc="12-channel Trim (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 12-channel Trim\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Individual trimming controls for 12 channels. Useful for automated gain control in a parent channel.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw" time="2026-07-21T12:46:12Z">
-        <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/12channel%20trim/12channel%20trim.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="Bat ears">
-    <reapack name="bat ears.jsfx" type="effect" desc="Bat Ears (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Bat Ears\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Heterodyning bat ears effect with strict Nyquist and audible monitor modes. Designed for carrier-frequency ring modulation and ultrasonic monitoring.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw" time="2026-07-21T12:46:12Z">
-        <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/Bat%20ears/bat%20ears.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="Mixer_10xM-1xS">
-    <reapack name="Mixer_10xM-1xS.jsfx" type="effect" desc="10x Mono to 1x Stereo Mixer (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 10 to 2-channel mixer\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Individual level and pan controls for 10 channels.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw (adapted from IXix)" time="2026-07-21T12:46:12Z">
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/Mixer_10xM-1xS/Mixer_10xM-1xS.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="MSConvert">
-    <reapack name="MSConvert.jsfx" type="effect" desc="MSConvert (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 MSConvert\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Convert a stereo signal either from Mid-Side to AB-format or vice versa. Attenuation is evenly distributed at -3 dB in both directions so that a unity-gain round trip preserves the signal.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw" time="2026-07-21T12:46:12Z">
-        <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/MSConvert/MSConvert.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="PhaseInvert">
-    <reapack name="PhaseInvert.jsfx" type="effect" desc="Phase Invert (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Phase Invert\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Invert the phase of the right channel.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw" time="2026-07-21T12:46:12Z">
-        <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/PhaseInvert/PhaseInvert.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="Rotate">
-    <reapack name="Rotate.jsfx" type="effect" desc="Rotate (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Rotate\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Alter stereo spatiality with equal-power rotation. Useful for rotating an ambisonic B-format sound field or widening stereo material.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw" time="2026-07-21T12:46:12Z">
-        <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/Rotate/Rotate.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="RotMS">
-    <reapack name="RotMS.jsfx" type="effect" desc="RotMS (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 RotMS\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Adjust stereo spatiality with MS/AB rotation, panning, and gain control. Supports conversion between AB and MS workflows with equal-power gain handling.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw" time="2026-07-21T12:46:12Z">
-        <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/RotMS/RotMS.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="Stereo2Mono">
-    <reapack name="Stereo2Mono.jsfx" type="effect" desc="Stereo2Mono (plonk.studio)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Stereo2Mono\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Convert stereo to dual-mono with selectable -6 dB or -3 dB attenuation. Useful when you need a centered mono sum without losing level control.\par}
-}
-]]></description>
-        <link rel="website">https://plonk.studio</link>
-      </metadata>
-      <version name="1.0" author="LFSaw" time="2026-07-21T12:46:12Z">
-        <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/Stereo2Mono/Stereo2Mono.jsfx</source>
-      </version>
-    </reapack>
-  </category>
-  <category name="tanhDistortion">
+<index version="1" name="plonk toolbox" commit="743861fd956bc938d7d2bb3cae69e540379640ec">
+  <category name="distort">
     <reapack name="tanhDistortion.jsfx" type="effect" desc="tanh Distortion (plonk.studio)">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
@@ -164,13 +13,150 @@
 ]]></description>
         <link rel="website">https://plonk.studio</link>
       </metadata>
-      <version name="1.0" author="LFSaw / plonk GmbH (2023)" time="2026-07-21T12:46:12Z">
+      <version name="1.0" author="LFSaw / plonk GmbH (2023)" time="2026-07-21T12:53:18Z">
         <changelog><![CDATA[- Initial release]]></changelog>
-        <source>https://github.com/studioplonk/reaplonk/raw/e39a3b8bd731e38ce8fb91582f33558c98167e39/tanhDistortion/tanhDistortion.jsfx</source>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/distort/tanhDistortion.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="other ears">
+    <reapack name="bat ears.jsfx" type="effect" desc="Bat Ears (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Bat Ears\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Heterodyning bat ears effect with strict Nyquist and audible monitor modes. Designed for carrier-frequency ring modulation and ultrasonic monitoring.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/other%20ears/bat%20ears.jsfx</source>
       </version>
     </reapack>
   </category>
   <category name="Utility">
+    <reapack name="12channel trim.jsfx" type="effect" desc="12-channel Trim (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 12-channel Trim\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Individual trimming controls for 12 channels. Useful for automated gain control in a parent channel.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/12channel%20trim.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="Mixer_10xM-1xS.jsfx" type="effect" desc="10x Mono to 1x Stereo Mixer (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 10 to 2-channel mixer\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Individual level and pan controls for 10 channels.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw (adapted from IXix)" time="2026-07-21T12:53:18Z">
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/Mixer_10xM-1xS.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="MSConvert.jsfx" type="effect" desc="MSConvert (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 MSConvert\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Convert a stereo signal either from Mid-Side to AB-format or vice versa. Attenuation is evenly distributed at -3 dB in both directions so that a unity-gain round trip preserves the signal.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/MSConvert.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="PhaseInvert.jsfx" type="effect" desc="Phase Invert (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Phase Invert\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Invert the phase of the right channel.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/PhaseInvert.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="Rotate.jsfx" type="effect" desc="Rotate (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Rotate\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Alter stereo spatiality with equal-power rotation. Useful for rotating an ambisonic B-format sound field or widening stereo material.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/Rotate.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="RotMS.jsfx" type="effect" desc="RotMS (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 RotMS\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Adjust stereo spatiality with MS/AB rotation, panning, and gain control. Supports conversion between AB and MS workflows with equal-power gain handling.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/RotMS.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="Stereo2Mono.jsfx" type="effect" desc="Stereo2Mono (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Stereo2Mono\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Convert stereo to dual-mono with selectable -6 dB or -3 dB attenuation. Useful when you need a centered mono sum without losing level control.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/Stereo2Mono.jsfx</source>
+      </version>
+    </reapack>
     <reapack name="Utility.jsfx" type="effect" desc="Stereo Utility (plonk.studio)">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
