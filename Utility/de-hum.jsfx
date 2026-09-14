@@ -1,0 +1,559 @@
+desc:de-hum
+
+-- de-hum jsfx plugin emulating https://downloads.izotope.com/docs/rx6/25-de-hum/index.html
+-- 1. base frequency (50Hz ... 1kHz)
+-- 2. base gain of base frequency (0dB ... -80dB) 
+-- 3. number of harmonics (1 ... 16)
+-- 4. q factor of harmonics (0.1 ... 10)
+-- 5. q factor of harmonics (0.1 ... 10)
+-- 6. gain slope of harmonics (0 ... 1, where 0 means no slope, 1 means full slope, i.e. last harmonic is 10% of the first harmonic)
+-- 7. switch to toggle between hum output and hum-removed output
+
+
+slider1:base_freq=50<50,1000,1>base frequency (Hz)
+slider2:base_gain=-20<-80,0,1>base gain (dB)
+slider3:num_harmonics=5<1,16,1>number of harmonics
+slider4:q_factor=300<30,3000,1>q factor
+slider5:gain_slope=0.5<0,1,0.01>gain slope
+slider6:hum_output=0<0,1,1>hum output (0=hum removed, 1=hum only)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+options:gfx_hz=20
+
+@init
+output_gain = 0;
+
+// ---------------------------------------------------------------------
+// generic one-pole smoother, reusable for any parameter
+// ---------------------------------------------------------------------
+function smooth_towards(target, current, coef)
+(
+  current + (target - current) * coef;
+);
+
+// ---------------------------------------------------------------------
+// recompute the notch/peaking-EQ coefficients for all MAX_HARM harmonic
+// stages from the (smoothed) parameters. coefficients are shared across
+// channels - only filter state differs per channel.
+// ---------------------------------------------------------------------
+function calc_harmonic_coefs()
+local(k, freq_k, nyquist, fraction, gain_k_db, a, w0, cosw0, alpha, b0, b1, b2, a0, a1, a2, ch)
+(
+  nyquist = 0.49 * srate;
+  // only compute/process stages up to num_harmonics - stages beyond that
+  // are never read by notch_cascade()/gfx_calc_response_db() anymore, so
+  // there's no need to loop all the way to MAX_HARM every block.
+  active_harm = min(num_harmonics, MAX_HARM);
+
+  k = 0;
+  while (k < active_harm) (
+    freq_k = base_freq_s * (k + 1);
+    freq_k >= nyquist ? (
+      // above nyquist -> identity (bypass) stage
+      coef_b0[k] = 1;
+      coef_b1[k] = 0;
+      coef_b2[k] = 0;
+      coef_a1[k] = 0;
+      coef_a2[k] = 0;
+    ) : (
+      // taper notch depth across harmonics: slope=0 -> all harmonics equal,
+      // slope=1 -> last harmonic is 10% of the first harmonic's depth
+      num_harmonics > 1 ? (
+        fraction = 1 - gain_slope_s * 0.9 * k / (num_harmonics - 1);
+      ) : (
+        fraction = 1;
+      );
+      gain_k_db = base_gain_s * fraction;
+
+      // RBJ audio-eq-cookbook peaking EQ, normalized (a0 divided out)
+      a = 10 ^ (gain_k_db / 40);
+      w0 = 2 * $pi * freq_k / srate;
+      cosw0 = cos(w0);
+      alpha = sin(w0) / (2 * q_factor_s);
+
+      b0 = 1 + alpha * a;
+      b1 = -2 * cosw0;
+      b2 = 1 - alpha * a;
+      a0 = 1 + alpha / a;
+      a1 = -2 * cosw0;
+      a2 = 1 - alpha / a;
+
+      coef_b0[k] = b0 / a0;
+      coef_b1[k] = b1 / a0;
+      coef_b2[k] = b2 / a0;
+      coef_a1[k] = a1 / a0;
+      coef_a2[k] = a2 / a0;
+    );
+    k += 1;
+  );
+
+  // if the active stage count just shrank, clear the leftover filter
+  // state of the now-unused stages once, so they start clean instead of
+  // resuming with stale state (and an audible click) if num_harmonics
+  // grows again later.
+  active_harm < prev_active_harm ? (
+    ch = 0;
+    while (ch < MAX_CHANNELS) (
+      k = active_harm;
+      while (k < prev_active_harm) (
+        state_z1[ch * MAX_HARM + k] = 0;
+        state_z2[ch * MAX_HARM + k] = 0;
+        k += 1;
+      );
+      ch += 1;
+    );
+  );
+  prev_active_harm = active_harm;
+);
+
+// ---------------------------------------------------------------------
+// run one sample through channel ch's cascade of MAX_HARM biquad stages
+// (Direct Form II Transposed). state is kept per channel, coefficients
+// are shared across channels.
+// ---------------------------------------------------------------------
+function notch_cascade(ch, x)
+local(k, base, y)
+(
+  base = ch * MAX_HARM;
+  k = 0;
+  // active_harm (<=num_harmonics) is (re)computed once per block by
+  // calc_harmonic_coefs() - stages beyond it are bypass/unused, so we
+  // skip them entirely instead of running identity math every sample.
+  while (k < active_harm) (
+    y = coef_b0[k] * x + state_z1[base + k];
+    state_z1[base + k] = coef_b1[k] * x - coef_a1[k] * y + state_z2[base + k];
+    state_z2[base + k] = coef_b2[k] * x - coef_a2[k] * y;
+    x = y;
+    k += 1;
+  );
+  x;
+);
+
+// ---------------------------------------------------------------------
+// full per-channel de-hum: filters channel ch, then returns either the
+// hum-removed signal or the extracted hum only, trimmed by output gain.
+// ---------------------------------------------------------------------
+function dehum_process(ch, x)
+local(filtered, hum)
+(
+  filtered = notch_cascade(ch, x);
+  hum = x - filtered;
+  hum_output == 0 ? filtered * gain_lin : hum * gain_lin;
+);
+
+// ---------------------------------------------------------------------
+// spectrum viewer: log-frequency/dB coordinate mapping (generic, reused
+// by both the FFT trace and the notch-response overlay)
+// ---------------------------------------------------------------------
+function gfx_freq_to_x(freq)
+(
+  spectrumX + spectrumW * log(max(freq, FFT_FMIN) / FFT_FMIN) / log(0.5 * srate / FFT_FMIN);
+);
+
+function gfx_x_to_freq(x)
+(
+  FFT_FMIN * exp((x - spectrumX) / spectrumW * log(0.5 * srate / FFT_FMIN));
+);
+
+function gfx_db_to_y(db)
+local(y)
+(
+  y = spectrumY + spectrumH * (DB_TOP - db) / (DB_TOP - DB_FLOOR);
+  max(spectrumY, min(spectrumY + spectrumH, y));
+);
+
+// ---------------------------------------------------------------------
+// total notch-filter-bank magnitude response (dB) at a given frequency,
+// evaluated directly from the same biquad coefficients used in @sample.
+// ---------------------------------------------------------------------
+function gfx_calc_response_db(freq)
+local(k, w, cosw, sinw, cos2w, sin2w, ren, imn, red, imd, magn2, magd2, total_db)
+(
+  w = 2 * $pi * freq / srate;
+  cosw = cos(w); sinw = sin(w);
+  // double-angle identities instead of separate cos(2w)/sin(2w) calls
+  cos2w = 2 * cosw * cosw - 1;
+  sin2w = 2 * sinw * cosw;
+  total_db = 0;
+  k = 0;
+  // only the active (<=num_harmonics) stages contribute anything but 0dB
+  while (k < active_harm) (
+    ren = coef_b0[k] + coef_b1[k] * cosw + coef_b2[k] * cos2w;
+    imn = -coef_b1[k] * sinw - coef_b2[k] * sin2w;
+    red = 1 + coef_a1[k] * cosw + coef_a2[k] * cos2w;
+    imd = -coef_a1[k] * sinw - coef_a2[k] * sin2w;
+    magn2 = ren * ren + imn * imn;
+    magd2 = max(red * red + imd * imd, 0.0000000001);
+    total_db += 10 * log(magn2 / magd2) / log(10);
+    k += 1;
+  );
+  total_db;
+);
+
+// ---------------------------------------------------------------------
+// rebuild the cached notch-response LUT (used by gfx_plot_curve_point_lut)
+// from the current coefficients - only called when parameters actually
+// changed enough to matter (see the dirty check in @gfx).
+// ---------------------------------------------------------------------
+function gfx_build_notch_lut()
+local(i)
+(
+  i = 0;
+  while (i < NOTCH_LUT_SIZE) (
+    notch_lut_db[i] = gfx_calc_response_db(notch_lut_freq[i]);
+    i += 1;
+  );
+  lut_base_freq = base_freq_s;
+  lut_base_gain = base_gain_s;
+  lut_q_factor = q_factor_s;
+  lut_gain_slope = gain_slope_s;
+  lut_num_harm = num_harmonics;
+);
+
+// ---------------------------------------------------------------------
+// interpolated lookup into notch_lut_db[] at an arbitrary frequency.
+// ---------------------------------------------------------------------
+function gfx_lut_db_at_freq(freq)
+local(t, idx0, idx1, frac)
+(
+  t = log(max(freq, FFT_FMIN) / FFT_FMIN) / log(0.5 * srate / FFT_FMIN) * (NOTCH_LUT_SIZE - 1);
+  idx0 = max(0, min(NOTCH_LUT_SIZE - 2, floor(t)));
+  frac = t - idx0;
+  idx1 = idx0 + 1;
+  notch_lut_db[idx0] + (notch_lut_db[idx1] - notch_lut_db[idx0]) * frac;
+);
+
+// ---------------------------------------------------------------------
+// background + log-frequency / dB grid with basic axis labels
+// ---------------------------------------------------------------------
+function gfx_draw_grid()
+local(x, y, freq, db)
+(
+  gfx_set(0.05, 0.05, 0.07, 1);
+  gfx_rect(spectrumX, spectrumY, spectrumW, spectrumH);
+
+  freq = 100;
+  while (freq <= 0.5 * srate) (
+    x = gfx_freq_to_x(freq);
+    gfx_set(0.3, 0.3, 0.3, 1);
+    gfx_line(x, spectrumY, x, spectrumY + spectrumH);
+    gfx_set(0.6, 0.6, 0.6, 1);
+    gfx_x = x + 2; gfx_y = spectrumY + spectrumH - 14;
+    freq >= 1000 ? gfx_printf("%dk", freq * 0.001) : gfx_printf("%d", freq);
+    freq *= 10;
+  );
+
+  db = DB_TOP;
+  while (db >= DB_FLOOR) (
+    y = gfx_db_to_y(db);
+    gfx_set(0.3, 0.3, 0.3, 1);
+    gfx_line(spectrumX, y, spectrumX + spectrumW, y);
+    gfx_set(0.6, 0.6, 0.6, 1);
+    gfx_x = spectrumX + 2; gfx_y = y - 12;
+    gfx_printf("%d dB", db);
+    db -= 20;
+  );
+);
+
+// ---------------------------------------------------------------------
+// take the last FFT_SIZE captured (pre-filter, mono) samples, window +
+// FFT them, and draw the magnitude spectrum on the log/dB grid.
+// ---------------------------------------------------------------------
+function gfx_draw_spectrum()
+local(i, src, re, im, mag2, db, freq, x, y, first)
+(
+  src = fft_write_pos;
+  i = 0;
+  while (i < FFT_SIZE) (
+    fft_workspace[i] = fft_capture[src] * fft_window[i];
+    src += 1;
+    src >= FFT_SIZE ? src = 0;
+    i += 1;
+  );
+
+  fft_real(fft_workspace, FFT_SIZE);
+  fft_permute(fft_workspace, FFT_SIZE / 2);
+  fft_workspace[1] = 0;
+
+  first = 1;
+  i = 1;
+  while (i < FFT_SIZE / 2) (
+    freq = i * srate / FFT_SIZE;
+    freq >= FFT_FMIN ? (
+      re = fft_workspace[2 * i];
+      im = fft_workspace[2 * i + 1];
+      mag2 = re * re + im * im;
+      db = 10 * log(max(mag2, 0.0000000001) / FFT_NORM) / log(10);
+      x = gfx_freq_to_x(freq);
+      y = gfx_db_to_y(db);
+      first ? (
+        gfx_x = x; gfx_y = y; first = 0;
+      ) : (
+        gfx_lineto(x, y, 1);
+      );
+    );
+    i += 1;
+  );
+);
+
+// ---------------------------------------------------------------------
+// connect (x,y) to the previous point plotted via this same helper
+// (tracked in notch_curve_first), or start a new stroke at that point.
+// ---------------------------------------------------------------------
+function gfx_plot_curve_xy(x, y)
+(
+  notch_curve_first ? (
+    gfx_x = x; gfx_y = y; notch_curve_first = 0;
+  ) : (
+    gfx_lineto(x, y, 1);
+  );
+);
+
+// ---------------------------------------------------------------------
+// coarse curve point using the cached notch_lut_db[] lookup table
+// (cheap - no biquad-response math), used for the full-sweep pass.
+// ---------------------------------------------------------------------
+function gfx_plot_curve_point_lut(freq)
+local(x, y, db)
+(
+  db = gfx_lut_db_at_freq(freq);
+  x = gfx_freq_to_x(freq);
+  y = gfx_db_to_y(db);
+  gfx_plot_curve_xy(x, y);
+);
+
+// ---------------------------------------------------------------------
+// exact curve point via gfx_calc_response_db(), used only for the small
+// fine-grained per-harmonic clusters where LUT resolution isn't enough.
+// ---------------------------------------------------------------------
+function gfx_plot_curve_point_exact(freq)
+local(x, y, db)
+(
+  db = gfx_calc_response_db(freq);
+  x = gfx_freq_to_x(freq);
+  y = gfx_db_to_y(db);
+  gfx_plot_curve_xy(x, y);
+);
+
+// ---------------------------------------------------------------------
+// overlay the combined notch-filter-bank response across the same axes.
+// drawn in two passes: a coarse curve for the overall shape, plus an
+// explicit fine-grained cluster of points centered exactly on each
+// active harmonic - this guarantees very narrow (high-Q) notches are
+// always visible instead of being skipped by the coarse pixel step.
+// ---------------------------------------------------------------------
+function gfx_draw_notch_curve()
+local(x, k, f0, nyq, relstep, m)
+(
+  notch_curve_first = 1;
+  x = spectrumX;
+  while (x <= spectrumX + spectrumW) (
+    gfx_plot_curve_point_lut(gfx_x_to_freq(x));
+    x += 1;
+  );
+
+  // for high Q, add fine-grained clusters centered on each harmonic so
+  // very narrow notches aren't skipped by the coarse pixel-stepped sweep
+  // above. below this threshold the notch is wide enough in Hz that the
+  // coarse sweep alone already resolves it correctly - and the relative
+  // spacing formula below becomes unstable (can reach <= 0 Hz) for low Q,
+  // which broke the drawing with spurious lines across the whole panel.
+  q_factor_s >= 300 ? (
+    nyq = 0.49 * srate;
+    relstep = 5 / q_factor_s; // fine-sample spacing, as a fraction of the harmonic's frequency
+    k = 0;
+    while (k < num_harmonics) (
+      f0 = base_freq_s * (k + 1);
+      f0 < nyq ? (
+        notch_curve_first = 1;
+        m = -6;
+        while (m <= 6) (
+          gfx_plot_curve_point_exact(f0 * (1 + m * relstep));
+          m += 1;
+        );
+      );
+      k += 1;
+    );
+  );
+);
+
+// ---------------------------------------------------------------------
+// generic on/off toggle button: draws a filled rect + ON/OFF label at
+// (bx,by,bw,bh), toggles `state` on left-click release-free press (edge
+// detected via mouse_cap_prev), and returns the (possibly new) state.
+// ---------------------------------------------------------------------
+function gfx_draw_toggle_button(bx, by, bw, bh, label, state)
+local(inside, clicked)
+(
+  inside = (mouse_x >= bx) && (mouse_x <= bx + bw) && (mouse_y >= by) && (mouse_y <= by + bh);
+  clicked = inside && (mouse_cap & 1) && !(mouse_cap_prev & 1);
+  clicked ? state = !state;
+
+  state ? gfx_set(0.2, 0.65, 0.3, 1) : gfx_set(0.3, 0.3, 0.3, 1);
+  gfx_rect(bx, by, bw, bh);
+  gfx_set(0.8, 0.8, 0.8, 1);
+  gfx_rect(bx, by, bw, 1);
+  gfx_rect(bx, by + bh - 1, bw, 1);
+  gfx_rect(bx, by, 1, bh);
+  gfx_rect(bx + bw - 1, by, 1, bh);
+
+  gfx_x = bx + 6; gfx_y = by + 4;
+  gfx_printf("%s: %s", label, state ? "ON" : "OFF");
+
+  state;
+);
+
+MAX_HARM = 16;
+MAX_CHANNELS = 2;
+
+// reserve flat coefficient arrays (length MAX_HARM, shared across channels)
+freemem = 0;
+coef_b0 = freemem; freemem += MAX_HARM;
+coef_b1 = freemem; freemem += MAX_HARM;
+coef_b2 = freemem; freemem += MAX_HARM;
+coef_a1 = freemem; freemem += MAX_HARM;
+coef_a2 = freemem; freemem += MAX_HARM;
+
+// reserve per-channel filter state (length MAX_HARM*MAX_CHANNELS)
+state_z1 = freemem; freemem += MAX_HARM * MAX_CHANNELS;
+state_z2 = freemem; freemem += MAX_HARM * MAX_CHANNELS;
+
+// --- spectrum viewer state ---
+FFT_SIZE = 2048;
+FFT_FMIN = 20;
+FFT_NORM = FFT_SIZE * FFT_SIZE * 0.25; // rough normalization for a windowed FFT, for relative display only
+DB_TOP = 6;
+DB_FLOOR = -90;
+
+fft_capture  = freemem; freemem += FFT_SIZE; // circular buffer of pre-filter mono input
+fft_workspace = freemem; freemem += FFT_SIZE; // windowed copy / in-place FFT result
+fft_window   = freemem; freemem += FFT_SIZE; // precomputed Hann window
+fft_write_pos = 0;
+
+fft_win_i = 0;
+while (fft_win_i < FFT_SIZE) (
+  fft_window[fft_win_i] = 0.5 - 0.5 * cos(2 * $pi * fft_win_i / (FFT_SIZE - 1));
+  fft_win_i += 1;
+);
+
+// --- cached notch-response curve (avoids recomputing the biquad-bank
+// response across the whole curve on every @gfx frame) ---
+NOTCH_LUT_SIZE = 300;
+notch_lut_db   = freemem; freemem += NOTCH_LUT_SIZE;
+notch_lut_freq = freemem; freemem += NOTCH_LUT_SIZE;
+
+lut_i = 0;
+while (lut_i < NOTCH_LUT_SIZE) (
+  notch_lut_freq[lut_i] = FFT_FMIN * exp(lut_i / (NOTCH_LUT_SIZE - 1) * log(0.5 * srate / FFT_FMIN));
+  lut_i += 1;
+);
+// sentinel values guaranteed to differ from any real parameter value,
+// so the first @gfx call always rebuilds the LUT once.
+lut_base_freq = -1;
+lut_base_gain = 1;
+lut_q_factor = -1;
+lut_gain_slope = -1;
+lut_num_harm = -1;
+
+prev_active_harm = 0;
+gfx_first_frame = 1;
+gfx_w_prev = 0;
+gfx_h_prev = 0;
+
+// smoothed shadow variables for the continuous sliders - start at the
+// current slider value so smoothing doesn't ramp in from 0
+base_freq_s = base_freq;
+base_gain_s = base_gain;
+q_factor_s = q_factor;
+gain_slope_s = gain_slope;
+gain_db_s = gain_db;
+
+// spectrum computation on/off (gfx-only toggle, defaults to on)
+spectrum_enabled = 1;
+mouse_cap_prev = 0;
+
+smooth_time = 0.015; // seconds, ~15ms glide time for smoothed sliders
+
+calc_harmonic_coefs();
+gain_lin = 10 ^ (gain_db_s / 20);
+
+@slider
+// sliders 1,2,4,5,6 are smoothed and applied at block-rate in @block;
+// num_harmonics (slider3) and hum_output (slider7) are discrete/stepped
+// and read directly each block/sample, so nothing to do here.
+
+@block
+smooth_coef = exp(-samplesblock / (smooth_time * srate));
+
+base_freq_s   = smooth_towards(base_freq,   base_freq_s,   smooth_coef);
+base_gain_s   = smooth_towards(base_gain,   base_gain_s,   smooth_coef);
+q_factor_s    = smooth_towards(q_factor,    q_factor_s,    smooth_coef);
+gain_slope_s  = smooth_towards(gain_slope,  gain_slope_s,  smooth_coef);
+gain_db_s     = smooth_towards(gain_db,     gain_db_s,     smooth_coef);
+
+calc_harmonic_coefs();
+gain_lin = 10 ^ (gain_db_s / 20);
+
+@sample
+// capture pre-filter mono signal for the spectrum viewer before it's overwritten below
+// (skipped entirely while the spectrum display is toggled off)
+spectrum_enabled ? (
+  fft_capture[fft_write_pos] = (spl0 + spl1) * 0.5;
+  fft_write_pos += 1;
+  fft_write_pos >= FFT_SIZE ? fft_write_pos = 0;
+);
+
+spl0 = dehum_process(0, spl0);
+spl1 = dehum_process(1, spl1);
+
+@gfx 640 300
+spectrumX = 45;
+spectrumY = 10;
+spectrumW = gfx_w - spectrumX - 10;
+spectrumH = gfx_h - 30;
+
+// rebuild the cached notch-response LUT only when the smoothed params
+// have moved meaningfully since the last rebuild (epsilon compare, since
+// the one-pole smoother asymptotically approaches its target and would
+// never compare bit-exact-equal to the cached values otherwise).
+dirty = abs(base_freq_s - lut_base_freq) > 0.05 || abs(base_gain_s - lut_base_gain) > 0.02 ||
+        abs(q_factor_s - lut_q_factor) > 0.5 || abs(gain_slope_s - lut_gain_slope) > 0.002 ||
+        (num_harmonics != lut_num_harm);
+dirty ? gfx_build_notch_lut();
+
+resized = (gfx_w != gfx_w_prev) || (gfx_h != gfx_h_prev);
+
+// skip the expensive background/grid/curve redraw on frames where
+// nothing visible would change - the spectrum trace (when enabled)
+// always needs a fresh frame since it reflects live audio, but the
+// static grid/notch-curve/legend don't need to be redrawn every frame.
+(spectrum_enabled || dirty || resized || gfx_first_frame) ? (
+  gfx_set(0, 0, 0, 1);
+  gfx_rect(0, 0, gfx_w, gfx_h);
+
+  gfx_draw_grid();
+
+  spectrum_enabled ? (
+    gfx_set(0.2, 0.9, 0.9, 0.9);
+    gfx_draw_spectrum();
+  );
+
+  gfx_set(1, 0.3, 0.3, 1);
+  gfx_draw_notch_curve();
+
+  gfx_set(1, 1, 1, 0.8);
+  gfx_x = spectrumX; gfx_y = 0;
+  gfx_printf("input spectrum (cyan)   notch response (red)");
+);
+
+spectrum_enabled = gfx_draw_toggle_button(gfx_w - 110, 4, 100, 18, "Spectrum", spectrum_enabled);
+
+gfx_w_prev = gfx_w;
+gfx_h_prev = gfx_h;
+mouse_cap_prev = mouse_cap;
+gfx_first_frame = 0;
+
