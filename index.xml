@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="plonk toolbox" commit="743861fd956bc938d7d2bb3cae69e540379640ec">
+<index version="1" name="plonk toolbox" commit="29c7473801d4ebd7cb6cbd5eb25bd88a9a0391f8">
   <category name="distort">
     <reapack name="tanhDistortion.jsfx" type="effect" desc="tanh Distortion (plonk.studio)">
       <metadata>
@@ -35,6 +35,40 @@
       <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
         <changelog><![CDATA[- Initial release]]></changelog>
         <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/other%20ears/bat%20ears.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="scripts">
+    <reapack name="explode channels into new tracks (plonk.studio).lua" type="script" desc="Explode channels into new tracks (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Explodes multichannel items into separate tracks based on their active channels.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="0.1" author="Till Bovermann" time="2026-09-14T19:07:03Z">
+        <changelog><![CDATA[+ 2026-10-14 -- bug fixes, generalisation to also work on tracks if no items are selected]]></changelog>
+        <source main="main">https://github.com/studioplonk/reaplonk/raw/29c7473801d4ebd7cb6cbd5eb25bd88a9a0391f8/scripts/explode%20channels%20into%20new%20tracks%20(plonk.studio).lua</source>
+      </version>
+    </reapack>
+    <reapack name="move selected items to new tracks (plonk.studio).lua" type="script" desc="Move selected items to new tracks (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Moves each selected media item to a new track, copies FX from the original track, and removes the original track if empty.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="0.1" author="Till Bovermann" time="2026-09-14T19:07:03Z">
+        <changelog><![CDATA[+ 2026-10-14 -- bug fixes, generalisation to also work on tracks if no items are selected]]></changelog>
+        <source main="main">https://github.com/studioplonk/reaplonk/raw/29c7473801d4ebd7cb6cbd5eb25bd88a9a0391f8/scripts/move%20selected%20items%20to%20new%20tracks%20(plonk.studio).lua</source>
       </version>
     </reapack>
   </category>
@@ -193,10 +227,10 @@ plonk.studio
 }}}
 .\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Installation\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 The URL to import in ReaPack is {\field{\*\fldinst{HYPERLINK "https://github.com/studioplonk/reaplonk/raw/master/index.xml"}}{\fldrslt{\ul
-https://github.com/studioplonk/reaplonk/raw/master/index.xml
+{\pard \ql \f0 \sa180 \li0 \fi0 The URL to import in ReaPack is {\field{\*\fldinst{HYPERLINK "https://raw.githubusercontent.com/studioplonk/reaplonk/refs/heads/main/index.xml"}}{\fldrslt{\ul
+https://raw.githubusercontent.com/studioplonk/reaplonk/refs/heads/main/index.xml
 }}}
-.\par}
+\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Plugins are individually licensed (mostly LGPL-3). See their respective sources for details.\par}
 }
