@@ -1,14 +1,14 @@
 desc:de-hum (plonk.studio)
-version: 1.1
+version: 1.2
 author: LFSaw
 about:
 	# de-hum
 	Remove hum from audio signals using a series of notch filters targeting the base frequency and its harmonics.
 link: https://plonk.studio
-provides:
-  [main] . > de-hum/de-hum.jsfx
 changelog:
-  - Relocate installation under plonk toolbox
+  - Moved into its own top-level category folder (de-hum/de-hum.jsfx), matching
+    the other plonk toolbox packages - the previous 1.1 "provides" remap left
+    it installed under Utility/de-hum/de-hum.jsfx instead.
 -- de-hum jsfx plugin emulating https://downloads.izotope.com/docs/rx6/25-de-hum/index.html
 -- 1. base frequency (50Hz ... 1kHz)
 -- 2. base gain of base frequency (0dB ... -80dB) 

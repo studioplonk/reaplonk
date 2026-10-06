@@ -1,5 +1,5 @@
 desc: Filterbank (plonk.studio)
-version: 1.1
+version: 1.2
 author: LFSaw
 about:
 	# filterbank
@@ -15,11 +15,14 @@ about:
 	Click a node to inspect/edit it in the panel below the spectrum.
 link: https://plonk.studio
 provides:
-  [main] . > filterbank/filterbank.jsfx
-  [nomain] Dependencies/spectrum.jsfx-inc > filterbank/Dependencies/spectrum.jsfx-inc
-  [nomain] Dependencies/oversample_upsamplers.jsfx-inc > filterbank/Dependencies/oversample_upsamplers.jsfx-inc
+  [nomain] Dependencies/spectrum.jsfx-inc
+  [nomain] Dependencies/oversample_upsamplers.jsfx-inc
 changelog:
-  - Relocate installation under plonk toolbox
+  - Fix 1.1 packaging bug: the "relocate" remap duplicated the category
+    folder name, installing to filterbank/filterbank/filterbank.jsfx instead
+    of filterbank/filterbank.jsfx. The category folder (derived from this
+    file's own location) already places it under plonk toolbox/filterbank -
+    no destination remap was ever needed.
 
 import Dependencies/spectrum.jsfx-inc
 import Dependencies/oversample_upsamplers.jsfx-inc
