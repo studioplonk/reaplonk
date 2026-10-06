@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="plonk toolbox" commit="29c7473801d4ebd7cb6cbd5eb25bd88a9a0391f8">
+<index version="1" name="plonk toolbox" commit="d775abca71902421372fdacf975d54ce2657c86f">
   <category name="distort">
     <reapack name="tanhDistortion.jsfx" type="effect" desc="tanh Distortion (plonk.studio)">
       <metadata>
@@ -16,6 +16,27 @@
       <version name="1.0" author="LFSaw / plonk GmbH (2023)" time="2026-07-21T12:53:18Z">
         <changelog><![CDATA[- Initial release]]></changelog>
         <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/distort/tanhDistortion.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="filterbank">
+    <reapack name="filterbank.jsfx" type="effect" desc="Filterbank (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 filterbank\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A bank of 12 parallel bandpass filters, each with its own frequency, gain, resonance (Q) and slope (1-4 cascaded stages). Filters are dragged directly in the spectrum view (x = frequency, y = gain, mouse wheel = Q), muted individually, edited via a right-click menu, or typed in numerically. A wideband carries the input signal minus the (gain-scaled) active filtered content, so the plugin is transparent by default until the wideband is attenuated or muted - filter gains then shape the balance between the selected bands and the rest of the spectrum. Click a node to inspect/edit it in the panel below the spectrum.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-10-06T20:58:38Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/f4fce889b14799fc6a6771af1ce0c71157213c6c/filterbank/filterbank.jsfx</source>
+        <source file="Dependencies/spectrum.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f4fce889b14799fc6a6771af1ce0c71157213c6c/filterbank/Dependencies/spectrum.jsfx-inc</source>
+        <source file="Dependencies/oversample_upsamplers.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f4fce889b14799fc6a6771af1ce0c71157213c6c/filterbank/Dependencies/oversample_upsamplers.jsfx-inc</source>
       </version>
     </reapack>
   </category>
@@ -88,6 +109,23 @@
       <version name="1.0" author="LFSaw" time="2026-07-21T12:53:18Z">
         <changelog><![CDATA[- Initial release]]></changelog>
         <source>https://github.com/studioplonk/reaplonk/raw/743861fd956bc938d7d2bb3cae69e540379640ec/Utility/12channel%20trim.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="de-hum.jsfx" type="effect" desc="de-hum (plonk.studio)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 de-hum\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Remove hum from audio signals using a series of notch filters targeting the base frequency and its harmonics.\par}
+}
+]]></description>
+        <link rel="website">https://plonk.studio</link>
+      </metadata>
+      <version name="1.0" author="LFSaw" time="2026-10-06T21:01:32Z">
+        <changelog><![CDATA[- Initial release]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/d775abca71902421372fdacf975d54ce2657c86f/Utility/de-hum.jsfx</source>
       </version>
     </reapack>
     <reapack name="Mixer_10xM-1xS.jsfx" type="effect" desc="10x Mono to 1x Stereo Mixer (plonk.studio)">
@@ -231,6 +269,8 @@ plonk.studio
 https://raw.githubusercontent.com/studioplonk/reaplonk/refs/heads/main/index.xml
 }}}
 \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Updating the index\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Install the indexer with {\f1 gem install reapack-index} if it is not already available. After committing package changes, run {\f1 reapack-index --no-commit} from the repository root to scan changes since the commit recorded in {\f1 index.xml} and update the index without creating a Git commit. Review the result with {\f1 git diff -- index.xml} and {\f1 git diff --check} before committing the generated index. The optional {\f1 reapack-index --check} command validates all files in the working tree, including untracked files, so local REAPER projects may produce metadata errors even when index generation succeeds.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Plugins are individually licensed (mostly LGPL-3). See their respective sources for details.\par}
 }
