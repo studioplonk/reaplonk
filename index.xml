@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="plonk toolbox" commit="d775abca71902421372fdacf975d54ce2657c86f">
+<index version="1" name="plonk toolbox" commit="023bfb74f34c0d878935faa7119bccbb256b4903">
   <category name="distort">
     <reapack name="tanhDistortion.jsfx" type="effect" desc="tanh Distortion (plonk.studio)">
       <metadata>
@@ -37,6 +37,12 @@
         <source>https://github.com/studioplonk/reaplonk/raw/f4fce889b14799fc6a6771af1ce0c71157213c6c/filterbank/filterbank.jsfx</source>
         <source file="Dependencies/spectrum.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f4fce889b14799fc6a6771af1ce0c71157213c6c/filterbank/Dependencies/spectrum.jsfx-inc</source>
         <source file="Dependencies/oversample_upsamplers.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f4fce889b14799fc6a6771af1ce0c71157213c6c/filterbank/Dependencies/oversample_upsamplers.jsfx-inc</source>
+      </version>
+      <version name="1.1" author="LFSaw" time="2026-10-06T21:18:24Z">
+        <changelog><![CDATA[- Relocate installation under plonk toolbox]]></changelog>
+        <source file="filterbank/filterbank.jsfx">https://github.com/studioplonk/reaplonk/raw/023bfb74f34c0d878935faa7119bccbb256b4903/filterbank/filterbank.jsfx</source>
+        <source file="filterbank/Dependencies/spectrum.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/023bfb74f34c0d878935faa7119bccbb256b4903/filterbank/Dependencies/spectrum.jsfx-inc</source>
+        <source file="filterbank/Dependencies/oversample_upsamplers.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/023bfb74f34c0d878935faa7119bccbb256b4903/filterbank/Dependencies/oversample_upsamplers.jsfx-inc</source>
       </version>
     </reapack>
   </category>
@@ -126,6 +132,10 @@
       <version name="1.0" author="LFSaw" time="2026-10-06T21:01:32Z">
         <changelog><![CDATA[- Initial release]]></changelog>
         <source>https://github.com/studioplonk/reaplonk/raw/d775abca71902421372fdacf975d54ce2657c86f/Utility/de-hum.jsfx</source>
+      </version>
+      <version name="1.1" author="LFSaw" time="2026-10-06T21:18:24Z">
+        <changelog><![CDATA[- Relocate installation under plonk toolbox]]></changelog>
+        <source file="de-hum/de-hum.jsfx">https://github.com/studioplonk/reaplonk/raw/023bfb74f34c0d878935faa7119bccbb256b4903/Utility/de-hum.jsfx</source>
       </version>
     </reapack>
     <reapack name="Mixer_10xM-1xS.jsfx" type="effect" desc="10x Mono to 1x Stereo Mixer (plonk.studio)">
@@ -270,7 +280,18 @@ https://raw.githubusercontent.com/studioplonk/reaplonk/refs/heads/main/index.xml
 }}}
 \par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Updating the index\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Install the indexer with {\f1 gem install reapack-index} if it is not already available. After committing package changes, run {\f1 reapack-index --no-commit} from the repository root to scan changes since the commit recorded in {\f1 index.xml} and update the index without creating a Git commit. Review the result with {\f1 git diff -- index.xml} and {\f1 git diff --check} before committing the generated index. The optional {\f1 reapack-index --check} command validates all files in the working tree, including untracked files, so local REAPER projects may produce metadata errors even when index generation succeeds.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Install the indexer with\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \f1 gem install reapack-index\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 if it is not already available. After committing package changes, run {\f1 reapack-index --no-commit} from the repository root to scan changes since the commit recorded in {\f1 index.xml} and update the index without creating a Git commit.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Review the result with\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \f1 git diff -- index.xml\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 and\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \f1 git diff --check\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 before committing the generated index.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The optional\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \f1 reapack-index --check\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 command validates all files in the working tree, including untracked files, so local REAPER projects may produce metadata errors even when index generation succeeds.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Complete the process by committing the updated {\f1 index.xml} to the repository with a meaningful commit message.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 License\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Plugins are individually licensed (mostly LGPL-3). See their respective sources for details.\par}
 }
