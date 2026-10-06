@@ -1,5 +1,5 @@
 desc: Filterbank (plonk.studio)
-version: 1.0
+version: 1.1
 author: LFSaw
 about:
 	# filterbank
@@ -15,10 +15,11 @@ about:
 	Click a node to inspect/edit it in the panel below the spectrum.
 link: https://plonk.studio
 provides:
-  [nomain] Dependencies/spectrum.jsfx-inc
-  [nomain] Dependencies/oversample_upsamplers.jsfx-inc
+  [main] . > filterbank/filterbank.jsfx
+  [nomain] Dependencies/spectrum.jsfx-inc > filterbank/Dependencies/spectrum.jsfx-inc
+  [nomain] Dependencies/oversample_upsamplers.jsfx-inc > filterbank/Dependencies/oversample_upsamplers.jsfx-inc
 changelog:
-	- Initial release
+  - Relocate installation under plonk toolbox
 
 import Dependencies/spectrum.jsfx-inc
 import Dependencies/oversample_upsamplers.jsfx-inc
