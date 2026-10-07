@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="plonk toolbox" commit="77ff0caba9ba0b90ee5906b10925bb796bd855c8">
+<index version="1" name="plonk toolbox" commit="f1fdf7f78e62cd5917430afe67b356a4683d15f0">
   <category name="de-hum">
     <reapack name="de-hum.jsfx" type="effect" desc="de-hum (plonk.studio)">
       <metadata>
@@ -48,7 +48,7 @@
 \widowctrl\hyphauto
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 filterbank\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 A bank of 12 parallel bandpass filters, each with its own frequency, gain, resonance (Q) and slope (1-4 cascaded stages). Filters are dragged directly in the spectrum view (x = frequency, y = gain, mouse wheel = Q), muted individually, edited via a right-click menu, or typed in numerically. A wideband carries the input signal minus the (gain-scaled) active filtered content, so the plugin is transparent by default until the wideband is attenuated or muted - filter gains then shape the balance between the selected bands and the rest of the spectrum. Click a node to inspect/edit it in the panel below the spectrum.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A bank of 6 parallel bandpass filters, each with its own frequency, gain, resonance (Q) and slope (1-3 cascaded stages). Filters are dragged directly in the spectrum view (x = frequency, y = gain, mouse wheel = Q), muted individually, edited via a right-click menu, or typed in numerically. The wideband path is the dry input minus the unscaled filtered signal, so with every filter and the wideband at 0 dB the output equals the input. A filter's gain boosts or cuts just its own band, and the wideband gain scales everything outside the filters. Click a node to inspect/edit it in the panel below the spectrum.\par}
 }
 ]]></description>
         <link rel="website">https://plonk.studio</link>
@@ -88,6 +88,36 @@
         <source>https://github.com/studioplonk/reaplonk/raw/77ff0caba9ba0b90ee5906b10925bb796bd855c8/filterbank/filterbank.jsfx</source>
         <source file="Dependencies/spectrum.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/77ff0caba9ba0b90ee5906b10925bb796bd855c8/filterbank/Dependencies/spectrum.jsfx-inc</source>
         <source file="Dependencies/oversample_upsamplers.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/77ff0caba9ba0b90ee5906b10925bb796bd855c8/filterbank/Dependencies/oversample_upsamplers.jsfx-inc</source>
+      </version>
+      <version name="1.4" author="LFSaw" time="2026-10-07T13:52:24Z">
+        <changelog><![CDATA[- Reduced to 6 bands with a maximum slope of 3 stages; slider layout is now
+  compact (globals first), so presets and automation from 1.3 do not carry over.
+- New Resonator filter mode (damped coupled-form resonator) with seconds-long
+  decay (the Q control becomes DECAY, 0.02-30 s), stable at extreme settings and
+  free of the tan() limit near Nyquist. Switching modes crossfades over 60 ms.
+- The wideband is now dry minus the unscaled filtered signal: every filter and
+  the wideband at 0 dB give the exact input, a filter's gain only changes its own
+  band, and the wideband scales what lies outside the filters (it is no longer a
+  dry/wet control).
+- Parameter smoothing now really smooths (the previous coefficients made every
+  ramp an instant jump), removing zipper noise on Q, frequency, gain and decay.
+- Large CPU reduction: dirty-checked parameter updates, only active filters are
+  processed (muted ones are flushed once they have rung out), coefficients refresh
+  every 16 samples while ramping, oversampling is optional (default off), and the
+  spectrum is only fed and drawn while the GUI is open and its mode needs it.
+- Spectrum mode cycles Off / Pre / Pre+Post / Post, FFT size is selectable,
+  the bottom panel dials are evenly spaced, and the Active/Muted pill is a small
+  indicator button.]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/filterbank.jsfx</source>
+        <source file="Dependencies/spectrum.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/spectrum.jsfx-inc</source>
+        <source file="Dependencies/oversample_upsamplers.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/oversample_upsamplers.jsfx-inc</source>
+        <source file="Dependencies/fb_params.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/fb_params.jsfx-inc</source>
+        <source file="Dependencies/fb_svf.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/fb_svf.jsfx-inc</source>
+        <source file="Dependencies/fb_resonator.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/fb_resonator.jsfx-inc</source>
+        <source file="Dependencies/fb_engine.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/fb_engine.jsfx-inc</source>
+        <source file="Dependencies/fb_gui_widgets.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/fb_gui_widgets.jsfx-inc</source>
+        <source file="Dependencies/fb_gui_graph.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/fb_gui_graph.jsfx-inc</source>
+        <source file="Dependencies/fb_gui_panels.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f1fdf7f78e62cd5917430afe67b356a4683d15f0/filterbank/Dependencies/fb_gui_panels.jsfx-inc</source>
       </version>
     </reapack>
   </category>
