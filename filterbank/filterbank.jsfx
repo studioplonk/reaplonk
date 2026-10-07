@@ -1,5 +1,5 @@
 desc: Filterbank (plonk.studio)
-version: 1.2
+version: 1.3
 author: LFSaw
 about:
 	# filterbank
@@ -18,11 +18,15 @@ provides:
   [nomain] Dependencies/spectrum.jsfx-inc
   [nomain] Dependencies/oversample_upsamplers.jsfx-inc
 changelog:
-  - Fix 1.1 packaging bug: the "relocate" remap duplicated the category
-    folder name, installing to filterbank/filterbank/filterbank.jsfx instead
-    of filterbank/filterbank.jsfx. The category folder (derived from this
-    file's own location) already places it under plonk toolbox/filterbank -
-    no destination remap was ever needed.
+  - Mute, gain, frequency and Q are now ramped at audio rate (previously
+    only once per block) and mute/gain are applied to each filter's input
+    rather than its output, so parameter changes - even large steps at
+    high Q - ring up/down naturally instead of clicking or zippering.
+  - Added a tanh saturation/distortion option and a global gain offset
+    fader applying to all filters at once (wideband stays untouched by
+    both), via a new bottom panel.
+  - Added a symbolic per-filter curve display (peak/Q/bandwidth markers)
+    as a lighter-weight alternative to the combined response curve.
 
 import Dependencies/spectrum.jsfx-inc
 import Dependencies/oversample_upsamplers.jsfx-inc
@@ -89,6 +93,8 @@ slider59:slope12=1<1,4,1>-Filter 12 Slope (stages)
 slider60:mute12=1<0,1,1>-Filter 12 Mute
 slider61:wideband_gain=0<-80,30,0.1>-Wideband Gain (dB)
 slider62:wideband_mute=0<0,1,1>-Wideband Mute
+slider63:tanh_distortion=0<0,1,1>-Tanh Distortion (all filters)
+slider64:global_gain=0<-40,40,0.1>-Global Gain Offset (dB, all filters)
 
 in_pin:left input
 in_pin:right input
@@ -102,7 +108,7 @@ options:gfx_hz=20
 MAX_FILT = 12;
 MAX_STAGES = 4;
 MAX_CHANNELS = 2;
-NODE_HIT_RADIUS = 9;
+NODE_HIT_RADIUS = 17;
 DOUBLE_CLICK_TIME = 0.35;
 
 // node frequencies are stored as 0-100 percent, log-mapped between
@@ -119,6 +125,10 @@ freq_log_max = log(nyquist_margin_hz / MIN_FREQ_HZ);
 // top ~199 of it being crammed into the last few drag-pixels.
 Q_MIN = 0.1;
 Q_MAX = 200;
+// matches the sliders' own declared default (q1=200 etc.) and
+// reset_filter()'s reset value - used as the Q for a newly spawned filter
+// when no filter has ever been selected yet to inherit Q from.
+DEFAULT_Q = 200;
 q_log_range = log(Q_MAX / Q_MIN);
 
 // run the actual filter math at 2x the host sample rate (tan() warping/
@@ -133,6 +143,16 @@ proc_srate = srate * OVERSAMPLE_FACTOR;
 pdc_delay = 32;
 upL.init_upSampler2(); upR.init_upSampler2();
 downL.init_upSampler2(); downR.init_upSampler2();
+
+// per-filter mute/gain/freq/Q are all ramped PER SAMPLE (not just once
+// per block, like slope is) - a block-rate step can still land as an
+// audible discontinuity mid-waveform when the host's buffer is large, so
+// these need the finer granularity to be reliably click-free. The ramp
+// time itself is also floored per-filter (see calc_mute_smooth_coef) -
+// a high-Q narrow cascade (e.g. 1700Hz/Q=200) rings far longer than this
+// floor, and changing any of them faster than it naturally decays still
+// sounds like a click even with a per-sample ramp.
+MUTE_SMOOTH_TIME = 0.3;
 
 function per_to_freq(per)
 (
@@ -187,7 +207,7 @@ spectrum.top_margin = 10;
 spectrum.bottom_margin = 150;
 spectrum.left_margin = 20;
 spectrum.right_margin = 20;
-spectrum.set_block_size(2048);
+spectrum.set_block_size(4096);
 // buffer 0 = pre-filterbank (input), buffer 1 = post-filterbank (output)
 spectrum.set_color(0, 0.2, 0.8, 0.85, 0.5);
 spectrum.set_fill(0, 1);
@@ -204,10 +224,15 @@ state_z1 = freemem; freemem += MAX_FILT * MAX_STAGES * MAX_CHANNELS;
 state_z2 = freemem; freemem += MAX_FILT * MAX_STAGES * MAX_CHANNELS;
 
 freq_s = freemem; freemem += MAX_FILT;
+freq_target = freemem; freemem += MAX_FILT;
 gain_s = freemem; freemem += MAX_FILT;
 q_s = freemem; freemem += MAX_FILT;
+q_target = freemem; freemem += MAX_FILT;
 mute_gain_s = freemem; freemem += MAX_FILT;
+mute_target = freemem; freemem += MAX_FILT;
+mute_smooth_coef = freemem; freemem += MAX_FILT;
 gain_lin = freemem; freemem += MAX_FILT;
+gain_lin_s = freemem; freemem += MAX_FILT;
 slope = freemem; freemem += MAX_FILT;
 prev_slope = freemem; freemem += MAX_FILT;
 default_freq = freemem; freemem += MAX_FILT;
@@ -218,6 +243,19 @@ default_freq = freemem; freemem += MAX_FILT;
 function smooth_towards(target, current, coef)
 (
   current + (target - current) * coef;
+);
+
+// EEL2 has no built-in tanh ('tanh' itself is a reserved/intrinsic name
+// that can't be shadowed by a user function, hence the _sat suffix) -
+// standard exp()-based definition, clamped so exp(2x) can't overflow to
+// inf/NaN at extreme drive levels.
+function tanh_sat(x)
+local(e2x)
+(
+  x > 20 ? 1 : x < -20 ? -1 : (
+    e2x = exp(2 * x);
+    (e2x - 1) / (e2x + 1);
+  );
 );
 
 // ---------------------------------------------------------------------
@@ -238,6 +276,27 @@ local(g)
   coef_a1[filt] = 1 / (1 + g * (g + coef_k[filt]));
   coef_a2[filt] = g * coef_a1[filt];
   coef_a3[filt] = g * coef_a2[filt];
+);
+
+// ---------------------------------------------------------------------
+// a cascade of slope[filt] resonant stages at freq_s[filt]/q_s[filt]
+// rings for roughly slope*Q/(pi*freq) seconds - any change to mute, gain,
+// freq or Q must ramp at least that slowly or the change itself reads as
+// a click, so floor the ramp time constant at MUTE_SMOOTH_TIME and
+// stretch it to match. Shared by mute_gain_s, gain_lin_s, freq_s and
+// q_s, all of which are ramped per-sample in @sample. Uses whichever of
+// the current/target Q and freq implies the LONGEST ring time (not just
+// the current, already-ramped value) - otherwise a large step towards a
+// higher Q or lower freq starts out ramping at the old, too-fast pace,
+// since the filter hasn't caught up to its new (slower-decaying) target
+// yet, and that mismatch is what reads as zipper noise mid-ramp.
+// ---------------------------------------------------------------------
+function calc_mute_smooth_coef(filt)
+local(tau)
+(
+  tau = slope[filt] * max(q_s[filt], q_target[filt]) / ($pi * min(freq_s[filt], freq_target[filt]));
+  tau = max(tau, MUTE_SMOOTH_TIME);
+  mute_smooth_coef[filt] = exp(-1 / (tau * proc_srate));
 );
 
 // ---------------------------------------------------------------------
@@ -287,21 +346,33 @@ local(ch, stage, base)
 );
 
 // ---------------------------------------------------------------------
-// parallel sum of all filters, plus the wideband complement. Filters are
-// ALWAYS processed (even muted) so their state stays warm - mute_gain_s
-// crossfades the output instead, avoiding clicks.
+// parallel sum of all filters, plus the wideband complement. Both
+// mute_gain_s and gain_lin_s gate each filter's INPUT (not its output) -
+// since the filters run in PARALLEL (not serial), scaling a filter's own
+// input instead of its output doesn't change its steady-state response,
+// but it does mean gain/mute changes let the resonance ring up/down
+// naturally instead of abruptly chopping an already-resonating output
+// (a click regardless of how slowly the gain itself was ramped).
 // ---------------------------------------------------------------------
 function filterbank_process(ch, x)
-local(filt, filtered_sum, wide)
+local(filt, filtered_sum, wide, stage_out, final_out)
 (
   filtered_sum = 0;
   filt = 0;
   while (filt < MAX_FILT) (
-    filtered_sum += mute_gain_s[filt] * gain_lin[filt] * bandpass_cascade(filt, ch, x);
+    stage_out = bandpass_cascade(filt, ch, mute_gain_s[filt] * gain_lin_s[filt] * x);
+    // tanh (applied right after) saturates the filter's fully-gained
+    // output, not the raw bandpass signal.
+    tanh_mix_s > 0.0001 ? stage_out += tanh_mix_s * (tanh_sat(stage_out) - stage_out);
+    filtered_sum += stage_out;
     filt += 1;
   );
   wide = x - filtered_sum;
-  filtered_sum + wideband_mute_gain_s * wideband_gain_lin * wide;
+  final_out = filtered_sum + wideband_mute_gain_s * wideband_gain_lin * wide;
+  // second tanh stage on the fully-summed output (filters + wideband),
+  // gated by the same button/crossfade as the per-filter ones above.
+  tanh_mix_s > 0.0001 ? final_out += tanh_mix_s * (tanh_sat(final_out) - final_out);
+  final_out;
 );
 
 // ---------------------------------------------------------------------
@@ -314,7 +385,7 @@ local(filt, filtered_sum, wide)
 // dB at the very end.
 // ---------------------------------------------------------------------
 function calc_filterbank_response_db(freq)
-local(filt, zr, zi, zsq_r, zsq_i, twoz_r, twoz_i, g, k, gsq, gk, nr, ni, dr, di, norm, hr, hi, tr, ti, nrr, nii, stage, sumre, sumim, gfac, wg)
+local(filt, zr, zi, zsq_r, zsq_i, twoz_r, twoz_i, g, k, gsq, gk, nr, ni, dr, di, norm, hr, hi, tr, ti, mag, ang, sumre, sumim, gfac, wg)
 (
   // z^-1 = e^{-i*2*pi*freq/proc_srate}, shared by every filter at this freq
   zr = cos(-2 * $pi * freq / proc_srate);
@@ -326,7 +397,7 @@ local(filt, zr, zi, zsq_r, zsq_i, twoz_r, twoz_i, g, k, gsq, gk, nr, ni, dr, di,
   sumre = 0; sumim = 0;
   filt = 0;
   while (filt < MAX_FILT) (
-    gfac = mute_gain_s[filt] * gain_lin[filt];
+    gfac = mute_gain_s[filt] * gain_lin_s[filt];
     gfac > 0.0001 ? (
       // closed-form complex response of one TPT bandpass stage (m0=0, m1=k, m2=0)
       g = coef_g[filt]; k = coef_k[filt];
@@ -338,14 +409,13 @@ local(filt, zr, zi, zsq_r, zsq_i, twoz_r, twoz_i, g, k, gsq, gk, nr, ni, dr, di,
       norm = max(dr * dr + di * di, 0.0000000001);
       hr = (nr * dr + ni * di) / norm;
       hi = (ni * dr - nr * di) / norm;
-      tr = 1; ti = 0;
-      stage = 0;
-      while (stage < slope[filt]) (
-        nrr = tr * hr - ti * hi;
-        nii = tr * hi + ti * hr;
-        tr = nrr; ti = nii;
-        stage += 1;
-      );
+      // cascading n identical stages multiplies the complex response n
+      // times - De Moivre's formula (r^n, n*theta) gets there directly
+      // instead of looping the complex multiplication stage times.
+      mag = sqrt(hr * hr + hi * hi) ^ slope[filt];
+      ang = atan2(hi, hr) * slope[filt];
+      tr = mag * cos(ang);
+      ti = mag * sin(ang);
       sumre += tr * gfac;
       sumim += ti * gfac;
     );
@@ -466,7 +536,7 @@ local(filt, nx, ny, r, wx, wy, wr)
       nx = spectrum.freq_to_x(node_freq(filt));
       ny = spectrum.db_to_y(node_gain(filt));
       hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
-      r = (filt == hovered_filt || filt == selected_filt || filt == drag_filt) ? 7 : 5;
+      r = (filt == hovered_filt || filt == selected_filt || filt == drag_filt) ? 14 : 10;
       gfx_set(node_r, node_g, node_b, 0.95);
       gfx_circle(nx, ny, r, 1, 1);
       filt == selected_filt ? (
@@ -481,7 +551,7 @@ local(filt, nx, ny, r, wx, wy, wr)
   // at a fixed x) showing/editing the wideband gain, muted via slider62
   wx = gfx_w - spectrum.right_margin - 20;
   wy = spectrum.db_to_y(node_gain(-1));
-  wr = (hovered_filt == -2 || drag_filt == -2 || selected_filt == -2) ? 7 : 5;
+  wr = (hovered_filt == -2 || drag_filt == -2 || selected_filt == -2) ? 14 : 10;
   slider(62) > 0.5 ? (
     gfx_set(0.85, 0.85, 0.85, 0.9);
     gfx_rect(wx - wr, wy - wr, wr * 2, wr * 2);
@@ -490,6 +560,133 @@ local(filt, nx, ny, r, wx, wy, wr)
   ) : (
     gfx_set(0.85, 0.85, 0.85, 0.95);
     gfx_rect(wx - wr, wy - wr, wr * 2, wr * 2);
+  );
+);
+
+// ---------------------------------------------------------------------
+// find the frequency above (dir>0) or below (dir<0) a filter's center
+// where its CASCADED (slope-stage) response has dropped by 12dB.
+// Closed-form instead of a numeric search: a single TPT bandpass stage,
+// expressed in its own prewarped tangent-frequency variable
+// X = tan(pi*f/srate) / tan(pi*f0/srate), is an exact ideal analog
+// bandpass |H(X)|^2 = (kX)^2 / ((1-X^2)^2 + (kX)^2) with k=1/Q - so its
+// -N dB points solve the quadratic X^2 -+ C*X - 1 = 0 for
+// C = k*sqrt((1-T)/T), T = 10^(-N/10), then unwarp X back to Hz. This
+// also sidesteps the old bisection's reliance on 30 iterations and an
+// assumed-monotonic search range, and is exact regardless of how close
+// the edge sits to the filter's own center frequency. Reads the LIVE
+// slider values (not the audio thread's smoothed freq_s/q_s/slope,
+// which only update while a block is actually processing and can
+// otherwise lag far behind what the dials are currently showing) so the
+// symbolic markers always track what's on screen, even with playback
+// stopped.
+// ---------------------------------------------------------------------
+function find_band_edge_12db(filt, dir)
+local(center_freq, q, stages, target_db, lin_target, k, c, x, g0, edge_hz)
+(
+  center_freq = node_freq(filt);
+  q = slider(3 + filt * 5);
+  stages = slider(4 + filt * 5);
+
+  target_db = -12 / stages;
+  lin_target = 10 ^ (target_db / 10);
+  k = 1 / q;
+  c = k * sqrt((1 - lin_target) / lin_target);
+  g0 = tan($pi * center_freq / proc_srate);
+
+  x = dir < 0 ? (-c + sqrt(c * c + 4)) / 2 : (c + sqrt(c * c + 4)) / 2;
+  edge_hz = (proc_srate / $pi) * atan(x * g0);
+  max(MIN_FREQ_HZ, min(nyquist_margin_hz, edge_hz));
+);
+
+// ---------------------------------------------------------------------
+// symbolic per-filter marker: peak dot (position = frequency/gain, same
+// as draw_filter_nodes) plus a horizontal bracket at the peak's gain
+// level spanning its -12dB band edges - an abstract stand-in for the
+// exact combined response curve that still visually conveys peak, Q and
+// bandwidth at a glance, especially with many overlapping filters.
+// ---------------------------------------------------------------------
+function draw_symbolic_filter(filt)
+local(f_lo, f_hi, x_lo, x_hi, y_peak, y_bot, tick, width)
+(
+  f_lo = find_band_edge_12db(filt, -1);
+  f_hi = find_band_edge_12db(filt, 1);
+  x_lo = spectrum.freq_to_x(f_lo);
+  x_hi = spectrum.freq_to_x(f_hi);
+  y_peak = spectrum.db_to_y(node_gain(filt));
+  tick = 5;
+  width = x_hi - x_lo;
+
+  hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+  width < 4 ? (
+    // too narrow for the bracket to read - collapse it into a single
+    // thick, more opaque bar running from above the node dot (so it
+    // still pokes out from under draw_filter_nodes()'s dot, drawn on
+    // top of this) all the way down, matching draw_symbolic_fill()'s
+    // own bottom edge.
+    y_bot = gfx_h - spectrum.bottom_margin - gfx_texth;
+    gfx_set(node_r, node_g, node_b, 0.95);
+    gfx_rect((x_lo + x_hi) / 2 - 2, y_peak - 18, 4, y_bot - (y_peak - 18));
+  ) : (
+    gfx_set(node_r, node_g, node_b, 0.5);
+    gfx_line(x_lo, y_peak, x_hi, y_peak, 1);
+    gfx_set(node_r, node_g, node_b, 0.85);
+    gfx_line(x_lo, y_peak - tick, x_lo, y_peak + tick, 1);
+    gfx_line(x_hi, y_peak - tick, x_hi, y_peak + tick, 1);
+  );
+);
+
+// ---------------------------------------------------------------------
+// translucent fill from a filter's own gain level down to the bottom
+// edge of the freq view, spanning its -12dB band edges - overlapping
+// active filters' fills blend via alpha into a combined-color overlay,
+// and the spectrum underneath stays visible through the low alpha.
+// ---------------------------------------------------------------------
+function draw_symbolic_fill(filt)
+local(x_lo, x_hi, y_peak, y_bot)
+(
+  x_lo = spectrum.freq_to_x(find_band_edge_12db(filt, -1));
+  x_hi = spectrum.freq_to_x(find_band_edge_12db(filt, 1));
+  y_peak = min(spectrum.db_to_y(node_gain(filt)), gfx_h - spectrum.bottom_margin - gfx_texth);
+  y_bot = gfx_h - spectrum.bottom_margin - gfx_texth;
+
+  hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+  gfx_set(node_r, node_g, node_b, 0.18);
+  gfx_rect(x_lo, y_peak, x_hi - x_lo, y_bot - y_peak);
+);
+
+// ---------------------------------------------------------------------
+// same fill treatment as draw_symbolic_fill(), but spanning the whole
+// visible band (the wideband has no single frequency of its own)
+// ---------------------------------------------------------------------
+function draw_wideband_fill()
+local(x_lo, x_hi, y_peak, y_bot)
+(
+  x_lo = spectrum.left_margin;
+  x_hi = gfx_w - spectrum.right_margin;
+  y_peak = min(spectrum.db_to_y(node_gain(-1)), gfx_h - spectrum.bottom_margin - gfx_texth);
+  y_bot = gfx_h - spectrum.bottom_margin - gfx_texth;
+
+  gfx_set(0.85, 0.85, 0.85, 0.12);
+  gfx_rect(x_lo, y_peak, x_hi - x_lo, y_bot - y_peak);
+);
+
+function draw_symbolic_filters()
+local(filt)
+(
+  // fills first (so they blend as a solid-looking overlay underneath),
+  // then the crisp peak/bracket marks on top of all of them.
+  slider(62) <= 0.5 ? draw_wideband_fill();
+  filt = 0;
+  while (filt < MAX_FILT) (
+    slider(5 + filt * 5) <= 0.5 ? draw_symbolic_fill(filt);
+    filt += 1;
+  );
+
+  filt = 0;
+  while (filt < MAX_FILT) (
+    slider(5 + filt * 5) <= 0.5 ? draw_symbolic_filter(filt);
+    filt += 1;
   );
 );
 
@@ -540,6 +737,7 @@ function start_text_edit(filt, field)
   edit_filt = filt;
   edit_field = field;
   #edit_text = "";
+  edit_opened_this_frame = 1;
 );
 
 function commit_text_edit()
@@ -562,7 +760,7 @@ local(val, ok, idx)
 );
 
 function handle_text_edit()
-local(c)
+local(c, outside)
 (
   // call unconditionally every frame so mouse_cap registers clicks reliably
   c = gfx_getchar();
@@ -573,7 +771,14 @@ local(c)
     ((c >= 48 && c <= 57) || c == 46 || c == 45) ? (
       strlen(#edit_text) == 0 ? sprintf(#edit_text, "%c", c) : str_setchar(#edit_text, strlen(#edit_text), c);
     );
+
+    // clicking anywhere outside the box commits and closes it, like a text
+    // field losing focus - skipped on the click that opened/retargeted the
+    // box this same frame, so that click doesn't instantly close it again.
+    outside = mouse_x < edit_box_x || mouse_x > edit_box_x + edit_box_w || mouse_y < edit_box_y || mouse_y > edit_box_y + edit_box_h;
+    edit_active && (mouse_cap & 1) && !(mouse_cap_prev & 1) && !edit_opened_this_frame && outside ? commit_text_edit();
   );
+  edit_opened_this_frame = 0;
 );
 
 function reset_filter(filt)
@@ -601,6 +806,18 @@ local(target, i)
     slider(4 + target * 5) = slider(4 + filt * 5); slider_automate(slider(4 + target * 5));
     slider(5 + target * 5) = 0; slider_automate(slider(5 + target * 5));
   );
+);
+
+function find_unused_filter_slot()
+local(i, target)
+(
+  target = -1;
+  i = 0;
+  while (i < MAX_FILT && target == -1) (
+    slider(5 + i * 5) > 0.5 ? target = i;
+    i += 1;
+  );
+  target;
 );
 
 function show_filter_context_menu(filt)
@@ -634,7 +851,7 @@ local(choice)
 );
 
 function process_mouse_nodes()
-local(now, idx, by, v01)
+local(now, idx, by, v01, target, new_q, new_slope)
 (
   // only hit-test spectrum-graph nodes above the bottom panel, so a click
   // on a panel widget (dial/button/stepper) never gets misread as a
@@ -661,14 +878,51 @@ local(now, idx, by, v01)
         // center; same technique as the panel's drag_apply_drag() dials.
         drag_anchor_dx = mouse_x - spectrum.freq_to_x(node_freq(hovered_filt));
         drag_anchor_dy = mouse_y - spectrum.db_to_y(node_gain(hovered_filt));
+        last_selected_filt = hovered_filt;
       );
       last_click_time = now;
       last_click_filt = hovered_filt;
     ) : hovered_filt == -2 ? (
-      drag_filt = -2;
-      drag_anchor_dy = mouse_y - spectrum.db_to_y(node_gain(-1));
+      now = time_precise();
+      (last_click_filt == -2) && (now - last_click_time < DOUBLE_CLICK_TIME) ? (
+        slider(62) = slider(62) > 0.5 ? 0 : 1;
+        slider_automate(slider(62));
+      ) : (
+        drag_filt = -2;
+        selected_filt = -2;
+        drag_anchor_dy = mouse_y - spectrum.db_to_y(node_gain(-1));
+      );
+      last_click_time = now;
+      last_click_filt = -2;
     ) : (
-      selected_filt = -1;
+      // double-click on empty graph space spawns a new filter (first
+      // unused/muted slot) at the clicked frequency/gain, inheriting Q
+      // and slope from the last selected filter (or DEFAULT_Q/1 if none
+      // ever was).
+      now = time_precise();
+      (last_click_filt == -1) && (now - last_click_time < DOUBLE_CLICK_TIME) ? (
+        target = find_unused_filter_slot();
+        target >= 0 ? (
+          new_q = last_selected_filt >= 0 ? slider(3 + last_selected_filt * 5) : DEFAULT_Q;
+          new_slope = last_selected_filt >= 0 ? slider(4 + last_selected_filt * 5) : 1;
+          slider(1 + target * 5) = freq_to_per(max(MIN_FREQ_HZ, min(nyquist_margin_hz, spectrum.x_to_freq(mouse_x))));
+          slider(2 + target * 5) = max(-80, min(30, spectrum.y_to_db(mouse_y)));
+          slider(3 + target * 5) = max(Q_MIN, min(Q_MAX, new_q));
+          slider(4 + target * 5) = new_slope;
+          slider(5 + target * 5) = 0;
+          slider_automate(slider(1 + target * 5));
+          slider_automate(slider(2 + target * 5));
+          slider_automate(slider(3 + target * 5));
+          slider_automate(slider(4 + target * 5));
+          slider_automate(slider(5 + target * 5));
+          selected_filt = target;
+          last_selected_filt = target;
+        );
+      ) : (
+        selected_filt = -1;
+      );
+      last_click_time = now;
+      last_click_filt = -1;
     );
   );
 
@@ -713,6 +967,7 @@ function draw_clickable_value(x, y, w, h, text, filt, field)
 
 function draw_text_edit_box(x, y)
 (
+  edit_box_x = x; edit_box_y = y - 2; edit_box_w = 90; edit_box_h = 16;
   gfx_set(0, 0, 0, 0.9);
   gfx_rect(x, y - 2, 90, 16);
   gfx_set(1, 1, 0.4, 1);
@@ -788,7 +1043,7 @@ local(idx, v01)
 // gfx_arc knob look from ReJJ/ReEQ/ReEQ.jsfx's draw_dial()).
 // ---------------------------------------------------------------------
 function draw_param_dial(cx, cy, r, filt, field, label, valuetext)
-local(v01, start, end, ang, arc_ofs, w, h, dist)
+local(v01, start, end, ang, arc_ofs, w, h, dist, now)
 (
   v01 = max(0, min(1, dial_get01(filt, field)));
   start = 0.75 * $pi;
@@ -801,14 +1056,17 @@ local(v01, start, end, ang, arc_ofs, w, h, dist)
   // the white needle pointed at visibly different angles).
   arc_ofs = $pi / 2;
 
-  gfx_set(0.22, 0.22, 0.26, 1);
+  gfx_set(0.07, 0.07, 0.09, 1);
   gfx_arc(cx, cy, r, start + arc_ofs, end + arc_ofs, 1);
-  gfx_set(0.95, 0.75, 0.3, 1);
+  gfx_set(1, 0.82, 0.25, 1);
   gfx_arc(cx, cy, r, start + arc_ofs, ang + arc_ofs, 1);
   gfx_set(1, 1, 1, 1);
   gfx_line(cx, cy, cx + r * 0.8 * cos(ang), cy + r * 0.8 * sin(ang));
-  gfx_set(0.15, 0.15, 0.18, 1);
+  gfx_line(cx + 1, cy, cx + 1 + r * 0.8 * cos(ang), cy + r * 0.8 * sin(ang));
+  gfx_set(0.07, 0.07, 0.09, 1);
   gfx_circle(cx, cy, r * 0.55, 1);
+  gfx_set(0.5, 0.5, 0.56, 1);
+  gfx_circle(cx, cy, r * 0.55, 0, 1);
 
   gfx_set(0.75, 0.75, 0.8, 1);
   gfx_measurestr(label, w, h);
@@ -822,8 +1080,16 @@ local(v01, start, end, ang, arc_ofs, w, h, dist)
 
   dist = sqrt((mouse_x - cx) * (mouse_x - cx) + (mouse_y - cy) * (mouse_y - cy));
   (mouse_cap & 1) && !(mouse_cap_prev & 1) && dist <= r + 4 ? (
-    dial_drag_active = 1; dial_drag_filt = filt; dial_drag_field = field; dial_drag_oldy = mouse_y;
-    dial_drag_v01 = dial_get01(filt, field);
+    now = time_precise();
+    (dial_click_last_filt == filt) && (dial_click_last_field == field) && (now - dial_click_last_time < DOUBLE_CLICK_TIME) ? (
+      start_text_edit(filt, field);
+    ) : (
+      dial_drag_active = 1; dial_drag_filt = filt; dial_drag_field = field; dial_drag_oldy = mouse_y;
+      dial_drag_v01 = dial_get01(filt, field);
+    );
+    dial_click_last_time = now;
+    dial_click_last_filt = filt;
+    dial_click_last_field = field;
   );
   (mouse_cap & 1) && dial_drag_active && dial_drag_filt == filt && dial_drag_field == field ? (
     dial_apply_drag(filt, field, mouse_y - dial_drag_oldy);
@@ -834,15 +1100,20 @@ local(v01, start, end, ang, arc_ofs, w, h, dist)
 function draw_filter_detail_row(filt, x, y, w, h)
 local(idx, bx, by2, bw, bh, muted)
 (
-  gfx_set(0.11, 0.11, 0.14, 1);
+  hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+
+  // subtle whole-panel tint plus a solid accent stripe along the top
+  // edge, both keyed to the filter's own hue, so the detail panel reads
+  // at a glance as "belonging to" the currently selected filter.
+  gfx_set(0.11 + node_r * 0.1, 0.11 + node_g * 0.1, 0.14 + node_b * 0.1, 1);
   gfx_rect(x, y, w, h);
+  gfx_set(node_r, node_g, node_b, 0.9);
+  gfx_rect(x, y, w, 2);
   gfx_set(0.3, 0.3, 0.36, 1);
-  gfx_rect(x, y, w, 1);
   gfx_rect(x, y + h - 1, w, 1);
   gfx_rect(x, y, 1, h);
   gfx_rect(x + w - 1, y, 1, h);
 
-  hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
   gfx_set(node_r, node_g, node_b, 1);
   gfx_rect(x + 8, y + 8, 10, 10);
 
@@ -898,8 +1169,80 @@ local(muted, bx, by2, bw, bh)
   draw_param_dial(x + w / 2, y + 66, 30, -1, 1, "GAIN", sprintf(#, "%.1f dB", node_gain(-1)));
 );
 
+// ---------------------------------------------------------------------
+// standalone panel (global, not tied to the selected filter) for controls
+// that apply to every filter at once: a checkbox turning tanh saturation
+// on/off, and a fader offsetting all filter gains by the same dB amount -
+// both exclude the wideband, which stays clean/untouched by either.
+// ---------------------------------------------------------------------
+function draw_global_panel(x, y, w, h)
+local(on, box, bx, by2, gy, track_y, track_h, track_w, v01, fill_w)
+(
+  gfx_set(0.11, 0.11, 0.14, 1);
+  gfx_rect(x, y, w, h);
+  gfx_set(0.3, 0.3, 0.36, 1);
+  gfx_rect(x, y, w, 1);
+  gfx_rect(x, y + h - 1, w, 1);
+  gfx_rect(x, y, 1, h);
+  gfx_rect(x + w - 1, y, 1, h);
+
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = x + 10; gfx_y = y + 6;
+  gfx_drawstr("Global (all filters)");
+
+  on = slider(63) > 0.5;
+  box = 16;
+  bx = x + 10; by2 = y + 30;
+  gfx_set(on ? 0.2 : 0.3, on ? 0.65 : 0.3, 0.3, 1);
+  gfx_rect(bx, by2, box, box);
+  gfx_set(0.8, 0.8, 0.8, 1);
+  gfx_rect(bx, by2, box, 1);
+  gfx_rect(bx, by2 + box - 1, box, 1);
+  gfx_rect(bx, by2, 1, box);
+  gfx_rect(bx + box - 1, by2, 1, box);
+  on ? (
+    gfx_set(1, 1, 1, 1);
+    gfx_line(bx + 3, by2 + 8, bx + 7, by2 + 12, 1);
+    gfx_line(bx + 7, by2 + 12, bx + 13, by2 + 3, 1);
+  );
+
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = bx + box + 8; gfx_y = by2 + 2;
+  gfx_drawstr("Tanh Distortion");
+
+  (mouse_cap & 1) && !(mouse_cap_prev & 1) && mouse_x >= bx && mouse_x <= bx + box && mouse_y >= by2 && mouse_y <= by2 + box ? (
+    slider(63) = on ? 0 : 1;
+    slider_automate(slider(63));
+  );
+
+  // click/drag anywhere on the track to set the global gain offset
+  // directly (absolute position), like a standard fader.
+  gy = by2 + box + 16;
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = x + 10; gfx_y = gy;
+  gfx_printf("Gain Offset: %.1f dB", slider(64));
+
+  track_y = gy + 16; track_h = 10; track_w = w - 20;
+  gfx_set(0.2, 0.2, 0.24, 1);
+  gfx_rect(x + 10, track_y, track_w, track_h);
+  gfx_set(0.3, 0.3, 0.36, 1);
+  gfx_rect(x + 10, track_y, track_w, 1);
+  gfx_rect(x + 10, track_y + track_h - 1, track_w, 1);
+
+  v01 = max(0, min(1, (slider(64) + 40) / 80));
+  fill_w = track_w * v01;
+  gfx_set(1, 0.82, 0.25, 0.85);
+  gfx_rect(x + 10, track_y, fill_w, track_h);
+
+  (mouse_cap & 1) && mouse_x >= x + 10 && mouse_x <= x + 10 + track_w && mouse_y >= track_y - 4 && mouse_y <= track_y + track_h + 4 ? (
+    v01 = max(0, min(1, (mouse_x - (x + 10)) / track_w));
+    slider(64) = v01 * 80 - 40;
+    slider_automate(slider(64));
+  );
+);
+
 function draw_bottom_panel()
-local(filt, bx, by, bw, bh, idx, panel_y, panel_h, now)
+local(filt, bx, by, bw, bh, idx, panel_y, panel_h, now, global_panel_w, detail_w)
 (
   !(mouse_cap & 1) ? dial_drag_active = 0;
 
@@ -926,6 +1269,7 @@ local(filt, bx, by, bw, bh, idx, panel_y, panel_h, now)
         slider_automate(slider(idx));
       ) : (
         selected_filt = filt;
+        last_selected_filt = filt;
       );
       nav_last_click_time = now;
       nav_last_click_filt = filt;
@@ -956,13 +1300,19 @@ local(filt, bx, by, bw, bh, idx, panel_y, panel_h, now)
 
   panel_y = by + 20;
   panel_h = spectrum.bottom_margin - 26;
+  // a fixed-width column on the right, separate from (and always visible
+  // regardless of) the selection-driven detail panel to its left.
+  global_panel_w = 180;
+  detail_w = gfx_w - 12 - global_panel_w - 10;
 
   gfx_set(1, 1, 1, 0.9);
-  selected_filt >= 0 ? draw_filter_detail_row(selected_filt, 6, panel_y, gfx_w - 12, panel_h) :
-  selected_filt == -2 ? draw_wideband_control(6, panel_y, gfx_w - 12, panel_h) : (
+  selected_filt >= 0 ? draw_filter_detail_row(selected_filt, 6, panel_y, detail_w, panel_h) :
+  selected_filt == -2 ? draw_wideband_control(6, panel_y, detail_w, panel_h) : (
     gfx_x = 6; gfx_y = panel_y + panel_h / 2 - 6;
     gfx_drawstr("Click a node to inspect/edit its parameters.");
   );
+
+  draw_global_panel(gfx_w - 6 - global_panel_w, panel_y, global_panel_w, panel_h);
 );
 
 // ---------------------------------------------------------------------
@@ -990,6 +1340,10 @@ local(inside, clicked)
 );
 
 // --- seed per-filter state from current slider values ---
+// global dB offset added to every filter's own gain (never the wideband) -
+// seeded before the loop below since gain_lin's initial value depends on it.
+global_gain_s = slider(64);
+
 filt = 0;
 while (filt < MAX_FILT) (
   freq_s[filt] = per_to_freq(slider(1 + filt * 5));
@@ -997,10 +1351,15 @@ while (filt < MAX_FILT) (
   q_s[filt] = slider(3 + filt * 5);
   slope[filt] = slider(4 + filt * 5);
   prev_slope[filt] = slope[filt];
-  mute_gain_s[filt] = slider(5 + filt * 5) > 0.5 ? 0 : 1;
-  gain_lin[filt] = 10 ^ (gain_s[filt] / 20);
+  freq_target[filt] = freq_s[filt];
+  q_target[filt] = q_s[filt];
+  mute_target[filt] = slider(5 + filt * 5) > 0.5 ? 0 : 1;
+  mute_gain_s[filt] = mute_target[filt];
+  gain_lin[filt] = 10 ^ ((gain_s[filt] + global_gain_s) / 20);
+  gain_lin_s[filt] = gain_lin[filt];
   default_freq[filt] = freq_s[filt];
   calc_filter_coefs(filt);
+  calc_mute_smooth_coef(filt);
   filt += 1;
 );
 
@@ -1008,11 +1367,17 @@ wideband_gain_s = slider(61);
 wideband_mute_gain_s = slider(62) > 0.5 ? 0 : 1;
 wideband_gain_lin = 10 ^ (wideband_gain_s / 20);
 
+// global per-filter tanh saturation on/off (never applied to the
+// wideband) - smoothed like mute_gain_s so flipping it mid-playback
+// crossfades instead of clicking.
+tanh_mix_s = slider(63) > 0.5 ? 1 : 0;
+
 smooth_time = 0.015;
 
 selected_filt = -1;
 hovered_filt = -1;
 drag_filt = -1;
+last_selected_filt = -1;
 last_click_time = 0;
 last_click_filt = -1;
 
@@ -1020,6 +1385,12 @@ edit_active = 0;
 edit_filt = -1;
 edit_field = 0;
 #edit_text = "";
+edit_box_x = 0; edit_box_y = 0; edit_box_w = 0; edit_box_h = 0;
+edit_opened_this_frame = 0;
+
+dial_click_last_time = 0;
+dial_click_last_filt = -99;
+dial_click_last_field = -99;
 
 dial_drag_active = 0;
 dial_drag_filt = -1;
@@ -1027,6 +1398,10 @@ dial_drag_field = -1;
 dial_drag_oldy = 0;
 
 spectrum_enabled = 1;
+// symbolic per-filter markers (peak/Q/bandwidth) replace the old combined
+// response curve by default; the curve code is kept and reachable via the
+// toggle button for comparison/fallback.
+curve_style_symbolic = 1;
 mouse_cap_prev = 0;
 
 @slider
@@ -1035,27 +1410,31 @@ mouse_cap_prev = 0;
 
 @block
 smooth_coef = exp(-samplesblock / (smooth_time * srate));
+global_gain_s = smooth_towards(slider(64), global_gain_s, smooth_coef);
 
 filt = 0;
 while (filt < MAX_FILT) (
-  freq_s[filt] = smooth_towards(per_to_freq(slider(1 + filt * 5)), freq_s[filt], smooth_coef);
+  // targets only - the actual ramp towards them happens per-sample in @sample.
+  freq_target[filt] = smooth_towards(per_to_freq(slider(1 + filt * 5)), freq_target[filt], smooth_coef);
   gain_s[filt] = smooth_towards(slider(2 + filt * 5), gain_s[filt], smooth_coef);
-  q_s[filt] = smooth_towards(slider(3 + filt * 5), q_s[filt], smooth_coef);
-  mute_gain_s[filt] = smooth_towards(slider(5 + filt * 5) > 0.5 ? 0 : 1, mute_gain_s[filt], smooth_coef);
-  gain_lin[filt] = 10 ^ (gain_s[filt] / 20);
+  q_target[filt] = smooth_towards(slider(3 + filt * 5), q_target[filt], smooth_coef);
+  mute_target[filt] = slider(5 + filt * 5) > 0.5 ? 0 : 1;
+  gain_lin[filt] = 10 ^ ((gain_s[filt] + global_gain_s) / 20);
 
   new_slope = slider(4 + filt * 5);
   new_slope < prev_slope[filt] ? clear_stale_stage_state(filt, new_slope, prev_slope[filt]);
   slope[filt] = new_slope;
   prev_slope[filt] = new_slope;
 
-  calc_filter_coefs(filt);
+  calc_mute_smooth_coef(filt);
   filt += 1;
 );
 
 wideband_gain_s = smooth_towards(slider(61), wideband_gain_s, smooth_coef);
 wideband_mute_gain_s = smooth_towards(slider(62) > 0.5 ? 0 : 1, wideband_mute_gain_s, smooth_coef);
 wideband_gain_lin = 10 ^ (wideband_gain_s / 20);
+
+tanh_mix_s = smooth_towards(slider(63) > 0.5 ? 1 : 0, tanh_mix_s, smooth_coef);
 
 @sample
 spectrum_enabled ? ( spectrum.sample0((spl0 + spl1) * 0.5); );
@@ -1068,6 +1447,18 @@ while (os_stage < OVERSAMPLE_FACTOR) (
   os_stage += 1;
   os_l = OVERSAMPLE_FACTOR * upL.upSample2();
   os_r = OVERSAMPLE_FACTOR * upR.upSample2();
+
+  filt = 0;
+  while (filt < MAX_FILT) (
+    mute_gain_s[filt] = smooth_towards(mute_target[filt], mute_gain_s[filt], mute_smooth_coef[filt]);
+    gain_lin_s[filt] = smooth_towards(gain_lin[filt], gain_lin_s[filt], mute_smooth_coef[filt]);
+    freq_s[filt] = smooth_towards(freq_target[filt], freq_s[filt], mute_smooth_coef[filt]);
+    q_s[filt] = smooth_towards(q_target[filt], q_s[filt], mute_smooth_coef[filt]);
+    // freq/Q feed the filter's own coefficients (not just its input), so
+    // they must be recomputed every time freq_s/q_s move.
+    calc_filter_coefs(filt);
+    filt += 1;
+  );
 
   os_l = filterbank_process(0, os_l);
   os_r = filterbank_process(1, os_r);
@@ -1092,9 +1483,11 @@ gfx_rect(0, 0, gfx_w, gfx_h);
 spectrum.draw_grid(0);
 spectrum_enabled ? ( spectrum.draw(0); spectrum.draw(1); );
 
-draw_response_curve();
-
 process_mouse_nodes();
+// drawn after process_mouse_nodes() (which applies the current frame's
+// drag/wheel updates to the sliders) so a dragged filter's shoulders
+// move in the same frame as its dot, instead of trailing it by one.
+curve_style_symbolic ? draw_symbolic_filters() : draw_response_curve();
 draw_filter_nodes();
 draw_selected_indicator();
 
@@ -1103,6 +1496,7 @@ draw_bottom_panel();
 handle_text_edit();
 
 spectrum_enabled = draw_toggle_button(gfx_w - 110, 4, 100, 18, "Spectrum", spectrum_enabled);
+curve_style_symbolic = draw_toggle_button(gfx_w - 220, 4, 100, 18, "Symbolic", curve_style_symbolic);
 
 mouse_cap_prev = mouse_cap;
 
