@@ -1,0 +1,133 @@
+desc:filterbank: damped coupled-form resonator engine (long ringing) and its response math
+
+@init
+
+// ---------------------------------------------------------------------
+// Coefficients of one damped complex one-pole resonator, y[n] = r*rot(w)*y[n-1] + x[n],
+// evaluated as a rotation matrix: the rotation is orthogonal, so the state size is
+// set by r alone and changing w every sample cannot make it grow or drift (a biquad
+// can); there is no tan(), so there is nothing to blow up towards Nyquist. r comes
+// from the decay time T60 (-60 dB), norm = 2*(1-r) gives ~0 dB peak for the real part.
+// ---------------------------------------------------------------------
+// pole radius and output scale; the scale is energy-constant (peak gain 0 dB at T60_REF), so noise and
+// impulse excitation stay equally loud when the decay changes instead of getting quieter as it lengthens
+function res_calc_decay(filt)
+local(rr)
+(
+  rr = exp(-LN1000 / (max(r_dec_s[filt], T60_MIN) * srate));
+  r_r[filt] = rr;
+  r_norm[filt] = sqrt(2 * (1 - rr) * RES_NORM_REF);
+);
+
+function res_calc_freq(filt)
+local(w)
+(
+  w = 2 * $pi * r_freq_s[filt] / srate;
+  r_c[filt] = cos(w);
+  r_s[filt] = sin(w);
+);
+
+function res_calc(filt)
+(
+  res_calc_freq(filt);
+  res_calc_decay(filt);
+);
+
+// one sample through filt's cascade of slope[filt] normalised resonators
+function res_cascade(filt, ch, x)
+local(base, stage, n, re, im, nre, c, s, r, nrm)
+(
+  base = ch * MAX_FILT * MAX_STAGES + filt * MAX_STAGES;
+  n = slope[filt];
+  c = r_c[filt]; s = r_s[filt]; r = r_r[filt]; nrm = r_norm[filt];
+  stage = 0;
+  while (stage < n) (
+    re = res_re[base + stage];
+    im = res_im[base + stage];
+    nre = r * (c * re - s * im) + x;
+    res_im[base + stage] = r * (s * re + c * im);
+    res_re[base + stage] = nre;
+    x = nre * nrm;
+    stage += 1;
+  );
+  x;
+);
+
+function res_clear_state(filt, new_n, old_n)
+local(ch, stage, base)
+(
+  ch = 0;
+  while (ch < MAX_CHANNELS) (
+    base = ch * MAX_FILT * MAX_STAGES + filt * MAX_STAGES;
+    stage = new_n;
+    while (stage < old_n) (
+      res_re[base + stage] = 0;
+      res_im[base + stage] = 0;
+      stage += 1;
+    );
+    ch += 1;
+  );
+);
+
+// largest |state| of a filter, to decide when a muted resonator has rung out
+function res_energy(filt)
+local(ch, st, base, m, a)
+(
+  m = 0;
+  ch = 0;
+  while (ch < MAX_CHANNELS) (
+    base = ch * MAX_FILT * MAX_STAGES + filt * MAX_STAGES;
+    st = 0;
+    while (st < MAX_STAGES) (
+      a = abs(res_re[base + st]); a > m ? ( m = a; );
+      a = abs(res_im[base + st]); a > m ? ( m = a; );
+      st += 1;
+    );
+    ch += 1;
+  );
+  m;
+);
+
+// ---------------------------------------------------------------------
+// combined parallel response (dB) of the resonator bank at freq, same structure as
+// calc_filterbank_response_db: one stage is H = norm*(1 - r*c*w)/(1 - 2*r*c*w + r^2*w^2)
+// with w = e^{-j*2*pi*freq/srate}; n stages raise it to the n-th power.
+// ---------------------------------------------------------------------
+function calc_response_res_db(freq)
+local(filt, wr, wi, w2r, w2i, rc, r2, nr, ni, dr, di, d2, hr, hi, mag, ang, sumre, sumim, usre, usim, mfac, wg, k)
+(
+  wr = cos(-2 * $pi * freq / srate);
+  wi = sin(-2 * $pi * freq / srate);
+  w2r = wr * wr - wi * wi;
+  w2i = 2 * wr * wi;
+
+  sumre = 0; sumim = 0; usre = 0; usim = 0;
+  filt = 0;
+  while (filt < MAX_FILT) (
+    mfac = r_mute_gain_s[filt];
+    mfac > 0.0001 ? (
+      rc = r_r[filt] * r_c[filt];
+      r2 = r_r[filt] * r_r[filt];
+      nr = 1 - rc * wr;
+      ni = -rc * wi;
+      dr = 1 - 2 * rc * wr + r2 * w2r;
+      di = -2 * rc * wi + r2 * w2i;
+      d2 = max(dr * dr + di * di, 0.0000000001);
+      hr = r_norm[filt] * (nr * dr + ni * di) / d2;
+      hi = r_norm[filt] * (ni * dr - nr * di) / d2;
+      mag = sqrt(hr * hr + hi * hi) ^ slope[filt];
+      ang = atan2(hi, hr) * slope[filt];
+      sumre += mag * cos(ang) * mfac * r_gain_lin_s[filt];
+      sumim += mag * sin(ang) * mfac * r_gain_lin_s[filt];
+      usre += mag * cos(ang) * mfac;
+      usim += mag * sin(ang) * mfac;
+    );
+    filt += 1;
+  );
+
+  wg = wideband_mute_gain_s * wideband_gain_lin;
+  sumre = sumre + wg * (1 - usre);
+  sumim = sumim - wg * usim;
+
+  20 * log10(max(sqrt(sumre * sumre + sumim * sumim), 0.0000000001));
+);

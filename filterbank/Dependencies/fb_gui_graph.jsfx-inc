@@ -1,0 +1,418 @@
+desc:filterbank: spectrum graph nodes, curves and mouse handling
+
+@init
+
+// ---------------------------------------------------------------------
+// draw one response-curve segment as several overlaid offset strokes
+// (1 full-alpha center + 4 adjacent + 2 diagonal, each lower-alpha), the
+// same technique as ReJJ/ReEQ/ReEQ.jsfx's draw_thick_line() scaled up
+// for a visibly thicker, more anti-aliased look than a plain gfx_line().
+// ---------------------------------------------------------------------
+function draw_resp_thick_line(x1, y1, x2, y2)
+(
+  gfx_a = 0.95;
+  gfx_line(x1, y1, x2, y2, 1);
+  gfx_a = 0.5;
+  gfx_line(x1 - 1, y1, x2 - 1, y2, 1);
+  gfx_line(x1 + 1, y1, x2 + 1, y2, 1);
+  gfx_line(x1, y1 - 1, x2, y2 - 1, 1);
+  gfx_line(x1, y1 + 1, x2, y2 + 1, 1);
+  gfx_a = 0.22;
+  gfx_line(x1 - 1, y1 - 1, x2 + 1, y2 - 1, 1);
+  gfx_line(x1 - 1, y1 + 1, x2 + 1, y2 + 1, 1);
+);
+
+// ---------------------------------------------------------------------
+// overlay the combined filterbank response across the spectrum axes.
+// Computes the EXACT (non-LUT, non-interpolated) response at every pixel
+// column, same approach as ReEQ.jsfx's draw_filter_response()/
+// draw_filter_bands() - no caching/coarse-resolution pass at all, so
+// narrow (high-Q) peaks and closely-overlapping filters are always
+// rendered at full accuracy instead of being smeared by a fixed-size
+// lookup table. This replaces an earlier two-pass (coarse LUT + fine
+// exact clusters) approach, which drew two different approximations of
+// the same curve overlaid on top of each other and produced visible
+// spurious "multiple lines" artifacts.
+// ---------------------------------------------------------------------
+function draw_response_curve()
+local(x, freq, db, y, px, py, first)
+(
+  gfx_r = 1; gfx_g = 1; gfx_b = 1;
+  first = 1;
+  x = spectrum.left_margin;
+  while (x <= gfx_w - spectrum.right_margin) (
+    freq = spectrum.x_to_freq(x);
+    db = slider(SL_FILTER_MODE) > 0.5 ? calc_response_res_db(freq) : calc_filterbank_response_db(freq);
+    y = spectrum.db_to_y(db);
+    first ? ( px = x; py = y; first = 0; ) : (
+      draw_resp_thick_line(px, py, x, y);
+      px = x; py = y;
+    );
+    x += 1;
+  );
+);
+
+function find_node_at(mx, my)
+local(filt, nx, ny, d2, best, bestd2)
+(
+  best = -1;
+  bestd2 = NODE_HIT_RADIUS * NODE_HIT_RADIUS;
+  filt = 0;
+  while (filt < MAX_FILT) (
+    slider(sl_mute(filt)) <= 0.5 ? (
+      nx = spectrum.freq_to_x(node_freq(filt));
+      ny = spectrum.db_to_y(node_gain(filt));
+      d2 = sqr(mx - nx) + sqr(my - ny);
+      d2 <= bestd2 ? ( best = filt; bestd2 = d2; );
+    );
+    filt += 1;
+  );
+  best == -1 ? (
+    nx = gfx_w - spectrum.right_margin - 20;
+    ny = spectrum.db_to_y(node_gain(-1));
+    d2 = sqr(mx - nx) + sqr(my - ny);
+    d2 <= bestd2 ? best = -2;
+  );
+  best;
+);
+
+function draw_filter_nodes()
+local(filt, nx, ny, r, wx, wy, wr)
+(
+  // muted filters' nodes are hidden entirely - everything unmuted (active
+  // or not) is always shown, regardless of selection.
+  filt = 0;
+  while (filt < MAX_FILT) (
+    slider(sl_mute(filt)) <= 0.5 ? (
+      nx = spectrum.freq_to_x(node_freq(filt));
+      ny = spectrum.db_to_y(node_gain(filt));
+      hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+      r = (filt == hovered_filt || filt == selected_filt || filt == drag_filt) ? 14 : 10;
+      gfx_set(node_r, node_g, node_b, 0.95);
+      gfx_circle(nx, ny, r, 1, 1);
+      filt == selected_filt ? (
+        gfx_set(1, 1, 1, 0.9);
+        gfx_circle(nx, ny, r + 3, 0, 1);
+      );
+    );
+    filt += 1;
+  );
+
+  // wideband: a distinct square marker (not frequency-specific, so it sits
+  // at a fixed x) showing/editing the wideband gain, muted via SL_WIDE_MUTE
+  wx = gfx_w - spectrum.right_margin - 20;
+  wy = spectrum.db_to_y(node_gain(-1));
+  wr = (hovered_filt == -2 || drag_filt == -2 || selected_filt == -2) ? 14 : 10;
+  slider(SL_WIDE_MUTE) > 0.5 ? (
+    gfx_set(0.85, 0.85, 0.85, 0.9);
+    gfx_rect(wx - wr, wy - wr, wr * 2, wr * 2);
+    gfx_set(0.1, 0.1, 0.1, 1);
+    gfx_rect(wx - wr + 1, wy - wr + 1, wr * 2 - 2, wr * 2 - 2);
+  ) : (
+    gfx_set(0.85, 0.85, 0.85, 0.95);
+    gfx_rect(wx - wr, wy - wr, wr * 2, wr * 2);
+  );
+);
+
+// ---------------------------------------------------------------------
+// symbolic per-filter marker: peak dot (position = frequency/gain, same
+// as draw_filter_nodes) plus a horizontal bracket at the peak's gain
+// level spanning its -12dB band edges - an abstract stand-in for the
+// exact combined response curve that still visually conveys peak, Q and
+// bandwidth at a glance, especially with many overlapping filters.
+// ---------------------------------------------------------------------
+function draw_symbolic_filter(filt)
+local(f_lo, f_hi, x_lo, x_hi, y_peak, y_bot, tick, width)
+(
+  f_lo = find_band_edge_12db(filt, -1);
+  f_hi = find_band_edge_12db(filt, 1);
+  x_lo = spectrum.freq_to_x(f_lo);
+  x_hi = spectrum.freq_to_x(f_hi);
+  y_peak = spectrum.db_to_y(node_gain(filt));
+  tick = 5;
+  width = x_hi - x_lo;
+
+  hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+  width < 4 ? (
+    // too narrow for the bracket to read - collapse it into a single
+    // thick, more opaque bar running from above the node dot (so it
+    // still pokes out from under draw_filter_nodes()'s dot, drawn on
+    // top of this) all the way down, matching draw_symbolic_fill()'s
+    // own bottom edge.
+    y_bot = gfx_h - spectrum.bottom_margin - gfx_texth;
+    gfx_set(node_r, node_g, node_b, 0.95);
+    gfx_rect((x_lo + x_hi) / 2 - 2, y_peak - 18, 4, y_bot - (y_peak - 18));
+  ) : (
+    gfx_set(node_r, node_g, node_b, 0.5);
+    gfx_line(x_lo, y_peak, x_hi, y_peak, 1);
+    gfx_set(node_r, node_g, node_b, 0.85);
+    gfx_line(x_lo, y_peak - tick, x_lo, y_peak + tick, 1);
+    gfx_line(x_hi, y_peak - tick, x_hi, y_peak + tick, 1);
+  );
+);
+
+// ---------------------------------------------------------------------
+// translucent fill from a filter's own gain level down to the bottom
+// edge of the freq view, spanning its -12dB band edges - overlapping
+// active filters' fills blend via alpha into a combined-color overlay,
+// and the spectrum underneath stays visible through the low alpha.
+// ---------------------------------------------------------------------
+function draw_symbolic_fill(filt)
+local(x_lo, x_hi, y_peak, y_bot)
+(
+  x_lo = spectrum.freq_to_x(find_band_edge_12db(filt, -1));
+  x_hi = spectrum.freq_to_x(find_band_edge_12db(filt, 1));
+  y_peak = min(spectrum.db_to_y(node_gain(filt)), gfx_h - spectrum.bottom_margin - gfx_texth);
+  y_bot = gfx_h - spectrum.bottom_margin - gfx_texth;
+
+  hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+  gfx_set(node_r, node_g, node_b, 0.18);
+  gfx_rect(x_lo, y_peak, x_hi - x_lo, y_bot - y_peak);
+);
+
+// ---------------------------------------------------------------------
+// same fill treatment as draw_symbolic_fill(), but spanning the whole
+// visible band (the wideband has no single frequency of its own)
+// ---------------------------------------------------------------------
+function draw_wideband_fill()
+local(x_lo, x_hi, y_peak, y_bot)
+(
+  x_lo = spectrum.left_margin;
+  x_hi = gfx_w - spectrum.right_margin;
+  y_peak = min(spectrum.db_to_y(node_gain(-1)), gfx_h - spectrum.bottom_margin - gfx_texth);
+  y_bot = gfx_h - spectrum.bottom_margin - gfx_texth;
+
+  gfx_set(0.85, 0.85, 0.85, 0.12);
+  gfx_rect(x_lo, y_peak, x_hi - x_lo, y_bot - y_peak);
+);
+
+function draw_symbolic_filters()
+local(filt)
+(
+  // fills first (so they blend as a solid-looking overlay underneath),
+  // then the crisp peak/bracket marks on top of all of them.
+  slider(SL_WIDE_MUTE) <= 0.5 ? draw_wideband_fill();
+  filt = 0;
+  while (filt < MAX_FILT) (
+    slider(sl_mute(filt)) <= 0.5 ? draw_symbolic_fill(filt);
+    filt += 1;
+  );
+
+  filt = 0;
+  while (filt < MAX_FILT) (
+    slider(sl_mute(filt)) <= 0.5 ? draw_symbolic_filter(filt);
+    filt += 1;
+  );
+);
+
+// ---------------------------------------------------------------------
+// vertical drop-line from the selected filter's node down to the bottom
+// of the graph, plus exact white readouts of its frequency (over the
+// graph's own frequency-axis labels) and gain (over the dB-axis labels).
+// ---------------------------------------------------------------------
+function draw_selected_indicator()
+local(by, nx, ny, w, h)
+(
+  by = gfx_h - spectrum.bottom_margin;
+
+  selected_filt >= 0 ? (
+    nx = spectrum.freq_to_x(node_freq(selected_filt));
+    ny = spectrum.db_to_y(node_gain(selected_filt));
+
+    gfx_set(1, 1, 1, 0.3);
+    gfx_line(nx, ny, nx, by, 0);
+
+    sprintf(#indicator_txt, "%.2f Hz", node_freq(selected_filt));
+    gfx_measurestr(#indicator_txt, w, h);
+    gfx_set(1, 1, 1, 1);
+    gfx_x = nx - w / 2; gfx_y = gfx_h - (gfx_texth - 2) - spectrum.bottom_margin;
+    gfx_drawstr(#indicator_txt);
+
+    sprintf(#indicator_txt, "%.2f dB", node_gain(selected_filt));
+    gfx_measurestr(#indicator_txt, w, h);
+    gfx_x = 0; gfx_y = ny - gfx_texth * 0.5;
+    gfx_drawstr(#indicator_txt);
+  ) : selected_filt == -2 ? (
+    ny = spectrum.db_to_y(node_gain(-1));
+    sprintf(#indicator_txt, "%.2f dB", node_gain(-1));
+    gfx_measurestr(#indicator_txt, w, h);
+    gfx_set(1, 1, 1, 1);
+    gfx_x = 0; gfx_y = ny - gfx_texth * 0.5;
+    gfx_drawstr(#indicator_txt);
+  );
+);
+
+function reset_filter(filt)
+local(idx)
+(
+  idx = sl_freq(filt); slider(idx) = freq_to_per(default_freq[filt]); slider_automate(slider(idx));
+  idx = sl_gain(filt); slider(idx) = -80; slider_automate(slider(idx));
+  idx = sl_q(filt); slider(idx) = 200; slider_automate(slider(idx));
+  idx = sl_slope(filt); slider(idx) = 1; slider_automate(slider(idx));
+);
+
+function duplicate_filter_to_empty_slot(filt)
+local(target, i)
+(
+  target = -1;
+  i = 0;
+  while (i < MAX_FILT && target == -1) (
+    (i != filt) && (slider(sl_mute(i)) > 0.5) ? target = i;
+    i += 1;
+  );
+  target >= 0 ? (
+    slider(sl_freq(target)) = slider(sl_freq(filt)); slider_automate(slider(sl_freq(target)));
+    slider(sl_gain(target)) = slider(sl_gain(filt)); slider_automate(slider(sl_gain(target)));
+    slider(sl_q(target)) = slider(sl_q(filt)); slider_automate(slider(sl_q(target)));
+    slider(sl_slope(target)) = slider(sl_slope(filt)); slider_automate(slider(sl_slope(target)));
+    slider(sl_mute(target)) = 0; slider_automate(slider(sl_mute(target)));
+  );
+);
+
+function find_unused_filter_slot()
+local(i, target)
+(
+  target = -1;
+  i = 0;
+  while (i < MAX_FILT && target == -1) (
+    slider(sl_mute(i)) > 0.5 ? target = i;
+    i += 1;
+  );
+  target;
+);
+
+function show_filter_context_menu(filt)
+local(choice)
+(
+  #menu = "";
+  #menu += "Set Frequency...|";
+  #menu += "Set Gain...|";
+  #menu += "Set Q / Decay...|";
+  #menu += "Slope: 1 Stage|";
+  #menu += "Slope: 2 Stages|";
+  #menu += "Slope: 3 Stages|";
+  #menu += (slider(sl_mute(filt)) > 0.5 ? "Unmute" : "Mute");
+  #menu += "|Zero Gain|Reset Filter|Duplicate Filter to Empty Slot";
+
+  gfx_x = mouse_x; gfx_y = mouse_y;
+  choice = gfx_showmenu(#menu);
+
+  choice == 1 ? start_text_edit(filt, 0) :
+  choice == 2 ? start_text_edit(filt, 1) :
+  choice == 3 ? start_text_edit(filt, 2) :
+  choice == 4 ? ( slider(sl_slope(filt)) = 1; slider_automate(slider(sl_slope(filt))); ) :
+  choice == 5 ? ( slider(sl_slope(filt)) = 2; slider_automate(slider(sl_slope(filt))); ) :
+  choice == 6 ? ( slider(sl_slope(filt)) = 3; slider_automate(slider(sl_slope(filt))); ) :
+  choice == 7 ? ( slider(sl_mute(filt)) = slider(sl_mute(filt)) > 0.5 ? 0 : 1; slider_automate(slider(sl_mute(filt))); ) :
+  choice == 8 ? ( slider(sl_gain(filt)) = 0; slider_automate(slider(sl_gain(filt))); ) :
+  choice == 9 ? reset_filter(filt) :
+  choice == 10 ? duplicate_filter_to_empty_slot(filt);
+);
+
+function process_mouse_nodes()
+local(now, idx, by, v01, target, new_q, new_slope)
+(
+  // only hit-test spectrum-graph nodes above the bottom panel, so a click
+  // on a panel widget (dial/button/stepper) never gets misread as a
+  // click on empty graph space, which used to clear selected_filt and
+  // make the panel disappear the instant you tried to adjust it.
+  by = gfx_h - spectrum.bottom_margin;
+  hovered_filt = (mouse_y < by) ? find_node_at(mouse_x, mouse_y) : -1;
+
+  (mouse_cap & 1) && !(mouse_cap_prev & 1) && (mouse_y < by) ? (
+    hovered_filt >= 0 ? (
+      now = time_precise();
+      (last_click_filt == hovered_filt) && (now - last_click_time < DOUBLE_CLICK_TIME) ? (
+        idx = sl_mute(hovered_filt);
+        slider(idx) = slider(idx) > 0.5 ? 0 : 1;
+        slider_automate(slider(idx));
+      ) : (
+        drag_filt = hovered_filt;
+        selected_filt = hovered_filt;
+        // anchor the drag to the OFFSET between the click point and the
+        // node's actual current pixel position (which can be up to
+        // NODE_HIT_RADIUS away from dead-center), instead of snapping the
+        // node straight to the mouse - this is what caused the "abrupt
+        // frequency jump" the instant you grabbed a node slightly off-
+        // center; same technique as the panel's drag_apply_drag() dials.
+        drag_anchor_dx = mouse_x - spectrum.freq_to_x(node_freq(hovered_filt));
+        drag_anchor_dy = mouse_y - spectrum.db_to_y(node_gain(hovered_filt));
+        last_selected_filt = hovered_filt;
+      );
+      last_click_time = now;
+      last_click_filt = hovered_filt;
+    ) : hovered_filt == -2 ? (
+      now = time_precise();
+      (last_click_filt == -2) && (now - last_click_time < DOUBLE_CLICK_TIME) ? (
+        slider(SL_WIDE_MUTE) = slider(SL_WIDE_MUTE) > 0.5 ? 0 : 1;
+        slider_automate(slider(SL_WIDE_MUTE));
+      ) : (
+        drag_filt = -2;
+        selected_filt = -2;
+        drag_anchor_dy = mouse_y - spectrum.db_to_y(node_gain(-1));
+      );
+      last_click_time = now;
+      last_click_filt = -2;
+    ) : (
+      // double-click on empty graph space spawns a new filter (first
+      // unused/muted slot) at the clicked frequency/gain, inheriting Q
+      // and slope from the last selected filter (or DEFAULT_Q/1 if none
+      // ever was).
+      now = time_precise();
+      (last_click_filt == -1) && (now - last_click_time < DOUBLE_CLICK_TIME) ? (
+        target = find_unused_filter_slot();
+        target >= 0 ? (
+          new_q = last_selected_filt >= 0 ? slider(sl_q(last_selected_filt)) : DEFAULT_Q;
+          new_slope = last_selected_filt >= 0 ? slider(sl_slope(last_selected_filt)) : 1;
+          slider(sl_freq(target)) = freq_to_per(max(MIN_FREQ_HZ, min(nyquist_margin_hz, spectrum.x_to_freq(mouse_x))));
+          slider(sl_gain(target)) = max(-80, min(30, spectrum.y_to_db(mouse_y)));
+          slider(sl_q(target)) = max(Q_MIN, min(Q_MAX, new_q));
+          slider(sl_slope(target)) = new_slope;
+          slider(sl_mute(target)) = 0;
+          slider_automate(slider(sl_freq(target)));
+          slider_automate(slider(sl_gain(target)));
+          slider_automate(slider(sl_q(target)));
+          slider_automate(slider(sl_slope(target)));
+          slider_automate(slider(sl_mute(target)));
+          selected_filt = target;
+          last_selected_filt = target;
+        );
+      ) : (
+        selected_filt = -1;
+      );
+      last_click_time = now;
+      last_click_filt = -1;
+    );
+  );
+
+  (mouse_cap & 1) && drag_filt >= 0 ? (
+    idx = sl_freq(drag_filt);
+    slider(idx) = freq_to_per(max(MIN_FREQ_HZ, min(nyquist_margin_hz, spectrum.x_to_freq(mouse_x - drag_anchor_dx))));
+    slider_automate(slider(idx));
+    idx = sl_gain(drag_filt);
+    slider(idx) = max(-80, min(30, spectrum.y_to_db(mouse_y - drag_anchor_dy)));
+    slider_automate(slider(idx));
+  );
+
+  (mouse_cap & 1) && drag_filt == -2 ? (
+    slider(SL_WIDE_GAIN) = max(-80, min(30, spectrum.y_to_db(mouse_y - drag_anchor_dy)));
+    slider_automate(slider(SL_WIDE_GAIN));
+  );
+
+  !(mouse_cap & 1) ? drag_filt = -1;
+
+  // Q is only wheel-adjustable once its node has been clicked/selected -
+  // merely hovering used to be enough, which made the wheel change
+  // whichever node the mouse happened to be sitting over.
+  mouse_wheel != 0 && hovered_filt >= 0 && hovered_filt == selected_filt ? (
+    idx = sl_q(hovered_filt);
+    v01 = max(0, min(1, q_to01(slider(idx)) + (mouse_wheel / 120) * 0.03));
+    slider(idx) = q01_to_q(v01);
+    slider_automate(slider(idx));
+    mouse_wheel = 0;
+  );
+
+  (mouse_cap & 2) && !(mouse_cap_prev & 2) && hovered_filt >= 0 ? (
+    show_filter_context_menu(hovered_filt);
+  );
+);

@@ -1,0 +1,712 @@
+desc:filterbank: per-block/per-sample engine glue
+
+@init
+
+// ---------------------------------------------------------------------
+// per-sample ramp coefficient of an SVF filter: the FRACTION smooth_towards() moves towards its
+// target each oversampled sample, 1 - exp(-1/(tau*proc_srate)). (The original exp(-1/(tau*sr))
+// is its complement and made every "ramp" an instant jump.) A fixed short tau is enough: the TPT
+// SVF is built for fast modulation and mute/gain act on its input, so the output stays continuous.
+// ---------------------------------------------------------------------
+function calc_mute_smooth_coef(filt)
+(
+  mute_smooth_coef[filt] = 1 - exp(-1 / (SVF_RAMP_TIME * proc_srate));
+);
+
+// ---------------------------------------------------------------------
+// parallel bank: the wideband path is dry minus the UNSCALED filtered signal (mute applied, gain
+// not), so out = sum(gain_i * BP_i(x)) + wideband * (x - sum(BP_i(x))). With every filter at
+// 0 dB and the wideband at 0 dB the output is exactly the input, a filter's gain boosts or cuts
+// just its own band, and the wideband only scales what lies outside the filters. Mute gates the
+// filter input (a muted band stays in the wideband); gain acts on the output, which is continuous
+// because gain is ramped.
+// ---------------------------------------------------------------------
+function filterbank_process(ch, x)
+local(i, filt, wet_sum, unity_sum, unity_out, stage_out, wide, final_out)
+(
+  wet_sum = 0;
+  unity_sum = 0;
+  i = 0;
+  while (i < active_n) (
+    filt = active_idx[i];
+    unity_out = bandpass_cascade(filt, ch, mute_gain_s[filt] * x);
+    stage_out = gain_lin_s[filt] * unity_out;
+    // tanh (applied right after) saturates the filter's fully-gained output
+    tanh_mix_s > 0.0001 ? stage_out += tanh_mix_s * (tanh_sat(stage_out) - stage_out);
+    wet_sum += stage_out;
+    unity_sum += unity_out;
+    i += 1;
+  );
+  wide = x - unity_sum;
+  final_out = wet_sum + wideband_mute_gain_s * wideband_gain_lin * wide;
+  // second tanh stage on the fully-summed output (filters + wideband),
+  // gated by the same button/crossfade as the per-filter ones above.
+  tanh_mix_s > 0.0001 ? final_out += tanh_mix_s * (tanh_sat(final_out) - final_out);
+  final_out;
+);
+
+// largest |state| over all channels/stages of a filter - used to decide when a muted filter has finished ringing
+function fb_state_energy(filt)
+local(ch, st, base, m, a)
+(
+  m = 0;
+  ch = 0;
+  while (ch < MAX_CHANNELS) (
+    base = ch * MAX_FILT * MAX_STAGES + filt * MAX_STAGES;
+    st = 0;
+    while (st < MAX_STAGES) (
+      a = abs(state_z1[base + st]); a > m ? ( m = a; );
+      a = abs(state_z2[base + st]); a > m ? ( m = a; );
+      st += 1;
+    );
+    ch += 1;
+  );
+  m;
+);
+
+// the resonator bank's counterpart of filterbank_process (host rate, own active list and live values)
+function fb_process_res(ch, x)
+local(i, filt, wet_sum, unity_sum, unity_out, stage_out, wide, final_out, dc_y)
+(
+  wet_sum = 0;
+  unity_sum = 0;
+  i = 0;
+  while (i < r_active_n) (
+    filt = r_active_idx[i];
+    unity_out = res_cascade(filt, ch, r_mute_gain_s[filt] * x);
+    stage_out = r_gain_lin_s[filt] * unity_out;
+    tanh_mix_s > 0.0001 ? stage_out += tanh_mix_s * (tanh_sat(stage_out) - stage_out);
+    wet_sum += stage_out;
+    unity_sum += unity_out;
+    i += 1;
+  );
+  // resonators near DC leak a DC/sub-audio component; block it in both sums (identical filters, so 0 dB stays transparent)
+  dc_y = wet_sum - res_dcx[ch] + RES_DC_R * res_dcy[ch];
+  res_dcx[ch] = wet_sum;
+  res_dcy[ch] = dc_y;
+  wet_sum = dc_y;
+  dc_y = unity_sum - res_ux[ch] + RES_DC_R * res_uy[ch];
+  res_ux[ch] = unity_sum;
+  res_uy[ch] = dc_y;
+  unity_sum = dc_y;
+  wide = x - unity_sum;
+  final_out = wet_sum + wideband_mute_gain_s * wideband_gain_lin * wide;
+  tanh_mix_s > 0.0001 ? final_out += tanh_mix_s * (tanh_sat(final_out) - final_out);
+  final_out;
+);
+
+// PDC is only needed while the oversampling FIR is part of the signal path
+function fb_update_pdc()
+(
+  pdc_delay = (eng_mode == 0 && os_on) ? 32 : 0;
+);
+
+// SVF engine currently contributes to the output (it is the active mode or still fading out)
+function fb_svf_running()
+(
+  eng_mode == 0 || (xf_active && eng_old == 0);
+);
+
+function fb_res_running()
+(
+  eng_mode == 1 || (xf_active && eng_old == 1);
+);
+
+// start (or restart) an engine from the current targets with zero state
+function fb_seed_svf(filt)
+(
+  freq_s[filt] = freq_target[filt]; q_s[filt] = q_target[filt];
+  mute_gain_s[filt] = mute_target[filt]; gain_lin_s[filt] = gain_lin[filt];
+  clear_stale_stage_state(filt, 0, MAX_STAGES);
+  alive[filt] = mute_target[filt];
+  hold[filt] = 0;
+  ramp[filt] = 0;
+  calc_filter_coefs(filt);
+  calc_mute_smooth_coef(filt);
+);
+
+function fb_seed_res(filt)
+(
+  r_freq_s[filt] = freq_target[filt]; r_dec_s[filt] = dec_target[filt];
+  r_mute_gain_s[filt] = mute_target[filt]; r_gain_lin_s[filt] = gain_lin[filt];
+  res_clear_state(filt, 0, MAX_STAGES);
+  res_dcx[0] = 0; res_dcx[1] = 0; res_dcy[0] = 0; res_dcy[1] = 0;
+  res_ux[0] = 0; res_ux[1] = 0; res_uy[0] = 0; res_uy[1] = 0;
+  r_alive[filt] = mute_target[filt];
+  r_hold[filt] = 0;
+  r_ramp[filt] = 0;
+  res_calc(filt);
+);
+
+function fb_stop_engine(e)
+local(filt)
+(
+  filt = 0;
+  while (filt < MAX_FILT) (
+    e == 0 ? (
+      clear_stale_stage_state(filt, 0, MAX_STAGES);
+      alive[filt] = 0; ramp[filt] = 0;
+    ) : (
+      res_clear_state(filt, 0, MAX_STAGES);
+      r_alive[filt] = 0; r_ramp[filt] = 0;
+    );
+    filt += 1;
+  );
+);
+
+// switch between host-rate and 2x oversampled processing; ringing is flushed because the sample rate of the state changes
+function fb_set_oversample(want)
+local(filt)
+(
+  os_on = want;
+  proc_srate = srate * (want ? OVERSAMPLE_FACTOR : 1);
+  fb_update_pdc();
+  upL.init_upSampler2(); upR.init_upSampler2();
+  downL.init_upSampler2(); downR.init_upSampler2();
+  filt = 0;
+  while (filt < MAX_FILT) (
+    clear_stale_stage_state(filt, 0, MAX_STAGES);
+    calc_filter_coefs(filt);
+    calc_mute_smooth_coef(filt);
+    filt += 1;
+  );
+);
+
+// crossfade to another filter engine: the new one starts from zero state while the old one keeps ringing and fades out
+function fb_switch_mode(want)
+local(filt)
+(
+  !(xf_active && eng_old == want) ? (
+    want == 0 ? (
+      upL.init_upSampler2(); upR.init_upSampler2();
+      downL.init_upSampler2(); downR.init_upSampler2();
+    );
+    filt = 0;
+    while (filt < MAX_FILT) (
+      want == 0 ? fb_seed_svf(filt) : fb_seed_res(filt);
+      filt += 1;
+    );
+  );
+  xf_active ? ( xf = 1 - xf; ) : ( xf = 0; );
+  eng_old = eng_mode;
+  eng_mode = want;
+  xf_active = 1;
+  xf_stop_pending = -1;
+  fb_update_pdc();
+);
+
+// seed per-filter state from the current slider values (called once from @init)
+function fb_init_state()
+(
+  os_on = slider(SL_OVERSAMPLE) > 0.5;
+  proc_srate = srate * (os_on ? OVERSAMPLE_FACTOR : 1);
+  eng_mode = slider(SL_FILTER_MODE) > 0.5;
+  eng_old = eng_mode;
+  xf = 1;
+  xf_active = 0;
+  xf_stop_pending = -1;
+  fb_update_pdc();
+  upL.init_upSampler2(); upR.init_upSampler2();
+  downL.init_upSampler2(); downR.init_upSampler2();
+
+  // global dB offset added to every filter's own gain (never the wideband) -
+  // seeded before the loop below since gain_lin's initial value depends on it.
+  global_gain_s = slider(SL_GLOBAL_GAIN);
+
+  filt = 0;
+  while (filt < MAX_FILT) (
+    freq_s[filt] = per_to_freq(slider(sl_freq(filt)));
+    gain_s[filt] = slider(sl_gain(filt));
+    q_s[filt] = slider(sl_q(filt));
+    slope[filt] = min(MAX_STAGES, slider(sl_slope(filt)));
+    freq_target[filt] = freq_s[filt];
+    q_target[filt] = q_s[filt];
+    dec_target[filt] = fb_decay_from_q(q_s[filt]);
+    raw_dec[filt] = dec_target[filt];
+    mute_target[filt] = slider(sl_mute(filt)) > 0.5 ? 0 : 1;
+    mute_gain_s[filt] = mute_target[filt];
+    gain_lin[filt] = 10 ^ ((gain_s[filt] + global_gain_s) / 20);
+    gain_lin_s[filt] = gain_lin[filt];
+    default_freq[filt] = freq_s[filt];
+
+    // dirty-check cache of the raw slider values the targets were derived from
+    cache_f[filt] = slider(sl_freq(filt));
+    cache_g[filt] = gain_s[filt];
+    cache_q[filt] = q_s[filt];
+    raw_freq_hz[filt] = freq_s[filt];
+    conv[filt] = 0;
+
+    // only the active engine is seeded; the other one stays dormant with zero state
+    eng_mode == 0 ? fb_seed_svf(filt) : fb_seed_res(filt);
+    filt += 1;
+  );
+
+  wideband_gain_s = slider(SL_WIDE_GAIN);
+  wideband_mute_gain_s = slider(SL_WIDE_MUTE) > 0.5 ? 0 : 1;
+  wideband_gain_lin = 10 ^ (wideband_gain_s / 20);
+
+  // global per-filter tanh saturation on/off (never applied to the
+  // wideband) - smoothed like mute_gain_s so flipping it mid-playback
+  // crossfades instead of clicking.
+  tanh_mix_s = slider(SL_TANH) > 0.5 ? 1 : 0;
+
+  smooth_time = 0.015;
+  last_sb = -1;
+  coef_ctr = 0;
+  r_ctr = 0;
+  active_n = 0;
+  r_active_n = 0;
+  gui_last_t = 0;
+);
+
+// SVF engine, per filter and block: audio-rate ramp bookkeeping, mute gating and ringing-aware flush
+function fb_block_svf(filt)
+local(settled, cap_s)
+(
+  alive[filt] ? (
+    // audio-rate ramp finished once every live value has reached its target
+    ramp[filt] && !conv[filt] ? (
+      mute_target[filt] == 0 && mute_gain_s[filt] < SETTLE_MUTE ? ( mute_gain_s[filt] = 0; );
+      settled = abs(mute_gain_s[filt] - mute_target[filt]) < SETTLE_ABS
+        && abs(gain_lin_s[filt] - gain_lin[filt]) < SETTLE_REL * gain_lin[filt]
+        && abs(freq_s[filt] - freq_target[filt]) < SETTLE_REL * freq_target[filt]
+        && abs(q_s[filt] - q_target[filt]) < SETTLE_REL * q_target[filt];
+      settled ? (
+        mute_gain_s[filt] = mute_target[filt]; gain_lin_s[filt] = gain_lin[filt];
+        freq_s[filt] = freq_target[filt]; q_s[filt] = q_target[filt];
+        calc_filter_coefs(filt);
+        ramp[filt] = 0;
+      );
+    );
+    ramp[filt] ? calc_mute_smooth_coef(filt);
+
+    // a muted filter keeps running (input gated to 0) until its resonance has rung out
+    mute_target[filt] == 0 ? (
+      mute_gain_s[filt] < SETTLE_MUTE ? ( mute_gain_s[filt] = 0; );
+      mute_gain_s[filt] == 0 ? (
+        hold[filt] += samplesblock;
+        cap_s = 4 * slope[filt] * max(q_s[filt], q_target[filt]) / ($pi * min(freq_s[filt], freq_target[filt]));
+        fb_state_energy(filt) < FLUSH_ENERGY || hold[filt] > cap_s * srate ? (
+          clear_stale_stage_state(filt, 0, MAX_STAGES);
+          alive[filt] = 0;
+        );
+      );
+    );
+  ) : (
+    // inactive filters carry no state, so jump straight to the target instead of ramping from stale values
+    conv[filt] || ramp[filt] ? (
+      freq_s[filt] = freq_target[filt]; q_s[filt] = q_target[filt]; gain_lin_s[filt] = gain_lin[filt];
+      mute_gain_s[filt] = 0;
+      calc_filter_coefs(filt);
+      calc_mute_smooth_coef(filt);
+      ramp[filt] = 0;
+    );
+  );
+
+  alive[filt] ? ( active_idx[active_n] = filt; active_n += 1; );
+);
+
+// resonator engine, same bookkeeping; no ring-time floor on the ramps since its output stays continuous
+function fb_block_res(filt)
+local(settled, cap_s)
+(
+  r_alive[filt] ? (
+    r_ramp[filt] && !conv[filt] ? (
+      mute_target[filt] == 0 && r_mute_gain_s[filt] < SETTLE_MUTE ? ( r_mute_gain_s[filt] = 0; );
+      settled = abs(r_mute_gain_s[filt] - mute_target[filt]) < SETTLE_ABS
+        && abs(r_gain_lin_s[filt] - gain_lin[filt]) < SETTLE_REL * gain_lin[filt]
+        && abs(r_freq_s[filt] - freq_target[filt]) < SETTLE_REL * freq_target[filt]
+        && abs(r_dec_s[filt] - dec_target[filt]) < SETTLE_REL * dec_target[filt];
+      settled ? (
+        r_mute_gain_s[filt] = mute_target[filt]; r_gain_lin_s[filt] = gain_lin[filt];
+        r_freq_s[filt] = freq_target[filt]; r_dec_s[filt] = dec_target[filt];
+        res_calc(filt);
+        r_ramp[filt] = 0;
+      );
+    );
+
+    mute_target[filt] == 0 ? (
+      r_mute_gain_s[filt] < SETTLE_MUTE ? ( r_mute_gain_s[filt] = 0; );
+      r_mute_gain_s[filt] == 0 ? (
+        r_hold[filt] += samplesblock;
+        cap_s = 4 * slope[filt] * max(r_dec_s[filt], dec_target[filt]);
+        res_energy(filt) < FLUSH_ENERGY || r_hold[filt] > cap_s * srate ? (
+          res_clear_state(filt, 0, MAX_STAGES);
+          r_alive[filt] = 0;
+        );
+      );
+    );
+  ) : (
+    conv[filt] || r_ramp[filt] ? (
+      r_freq_s[filt] = freq_target[filt]; r_dec_s[filt] = dec_target[filt]; r_gain_lin_s[filt] = gain_lin[filt];
+      r_mute_gain_s[filt] = 0;
+      res_calc(filt);
+      r_ramp[filt] = 0;
+    );
+  );
+
+  r_alive[filt] ? ( r_active_idx[r_active_n] = filt; r_active_n += 1; );
+);
+
+// per-block parameter update (called from @block); only touches what actually changed or is still settling
+function fb_block()
+local(sf, sg, sq, sm, ss, gg_raw, gg_moving, tgt, settled, svf_on, res_on)
+(
+  samplesblock != last_sb ? (
+    last_sb = samplesblock;
+    smooth_coef = 1 - exp(-samplesblock / (smooth_time * srate));
+  );
+
+  tgt = slider(SL_OVERSAMPLE) > 0.5;
+  tgt != os_on ? (
+    // flushing only matters while the SVF engine holds state
+    fb_svf_running() ? fb_set_oversample(tgt) : ( os_on = tgt; proc_srate = srate * (tgt ? OVERSAMPLE_FACTOR : 1); fb_update_pdc(); );
+  );
+
+  tgt = slider(SL_FILTER_MODE) > 0.5;
+  tgt != eng_mode ? fb_switch_mode(tgt);
+  xf_stop_pending >= 0 ? ( fb_stop_engine(xf_stop_pending); xf_stop_pending = -1; );
+  svf_on = fb_svf_running();
+  res_on = fb_res_running();
+
+  gg_raw = slider(SL_GLOBAL_GAIN);
+  gg_moving = global_gain_s != gg_raw;
+  gg_moving ? (
+    global_gain_s = smooth_towards(gg_raw, global_gain_s, smooth_coef);
+    abs(global_gain_s - gg_raw) < SETTLE_ABS ? ( global_gain_s = gg_raw; );
+  );
+
+  active_n = 0;
+  r_active_n = 0;
+  filt = 0;
+  while (filt < MAX_FILT) (
+    sf = slider(sl_freq(filt)); sg = slider(sl_gain(filt)); sq = slider(sl_q(filt));
+    sf != cache_f[filt] || sg != cache_g[filt] || sq != cache_q[filt] ? (
+      cache_f[filt] = sf; cache_g[filt] = sg; cache_q[filt] = sq;
+      raw_freq_hz[filt] = per_to_freq(sf);
+      raw_dec[filt] = fb_decay_from_q(sq);
+      conv[filt] = 1;
+    );
+    gg_moving ? ( conv[filt] = 1; );
+
+    sm = slider(sl_mute(filt)) > 0.5 ? 0 : 1;
+    sm != mute_target[filt] ? (
+      mute_target[filt] = sm;
+      ramp[filt] = 1; r_ramp[filt] = 1;
+      sm ? (
+        svf_on ? ( alive[filt] = 1; hold[filt] = 0; );
+        res_on ? ( r_alive[filt] = 1; r_hold[filt] = 0; );
+      );
+    );
+
+    ss = min(MAX_STAGES, slider(sl_slope(filt)));
+    ss != slope[filt] ? (
+      ss < slope[filt] ? (
+        clear_stale_stage_state(filt, ss, slope[filt]);
+        res_clear_state(filt, ss, slope[filt]);
+      );
+      slope[filt] = ss;
+      ramp[filt] = 1; r_ramp[filt] = 1;
+    );
+
+    // block-rate one-pole towards the raw targets; the audio-rate ramp towards these happens per sample
+    conv[filt] ? (
+      freq_target[filt] = smooth_towards(raw_freq_hz[filt], freq_target[filt], smooth_coef);
+      gain_s[filt] = smooth_towards(cache_g[filt], gain_s[filt], smooth_coef);
+      q_target[filt] = smooth_towards(cache_q[filt], q_target[filt], smooth_coef);
+      dec_target[filt] = smooth_towards(raw_dec[filt], dec_target[filt], smooth_coef);
+      settled = !gg_moving
+        && abs(freq_target[filt] - raw_freq_hz[filt]) < SETTLE_REL * raw_freq_hz[filt]
+        && abs(gain_s[filt] - cache_g[filt]) < SETTLE_ABS
+        && abs(q_target[filt] - cache_q[filt]) < SETTLE_REL * cache_q[filt]
+        && abs(dec_target[filt] - raw_dec[filt]) < SETTLE_REL * raw_dec[filt];
+      settled ? (
+        freq_target[filt] = raw_freq_hz[filt]; gain_s[filt] = cache_g[filt];
+        q_target[filt] = cache_q[filt]; dec_target[filt] = raw_dec[filt];
+        conv[filt] = 0;
+      );
+      gain_lin[filt] = 10 ^ ((gain_s[filt] + global_gain_s) / 20);
+      ramp[filt] = 1; r_ramp[filt] = 1;
+    );
+
+    svf_on ? fb_block_svf(filt);
+    res_on ? fb_block_res(filt);
+    filt += 1;
+  );
+
+  wideband_gain_s != slider(SL_WIDE_GAIN) ? (
+    wideband_gain_s = smooth_towards(slider(SL_WIDE_GAIN), wideband_gain_s, smooth_coef);
+    abs(wideband_gain_s - slider(SL_WIDE_GAIN)) < SETTLE_ABS ? ( wideband_gain_s = slider(SL_WIDE_GAIN); );
+    wideband_gain_lin = 10 ^ (wideband_gain_s / 20);
+  );
+  tgt = slider(SL_WIDE_MUTE) > 0.5 ? 0 : 1;
+  wideband_mute_gain_s != tgt ? (
+    wideband_mute_gain_s = smooth_towards(tgt, wideband_mute_gain_s, smooth_coef);
+    abs(wideband_mute_gain_s - tgt) < SETTLE_ABS ? ( wideband_mute_gain_s = tgt; );
+  );
+  tgt = slider(SL_TANH) > 0.5 ? 1 : 0;
+  tanh_mix_s != tgt ? (
+    tanh_mix_s = smooth_towards(tgt, tanh_mix_s, smooth_coef);
+    abs(tanh_mix_s - tgt) < SETTLE_ABS ? ( tanh_mix_s = tgt; );
+  );
+
+  // spectrum work is only needed while the GUI is open (gui_last_t is stamped in @gfx)
+  gui_visible = time_precise() - gui_last_t < 0.5;
+  tgt = slider(SL_SPECTRUM_MODE);
+  spec_pre_on = gui_visible && (tgt == 1 || tgt == 2);
+  spec_post_on = gui_visible && (tgt == 2 || tgt == 3);
+  tgt = 2048 * (2 ^ slider(SL_FFT_SIZE));
+  gui_visible && spectrum.fftsize != tgt ? spectrum.set_block_size(tgt);
+);
+
+// audio-rate smoothing of the ramping SVF filters; coefficients are refreshed every 16 samples while ramping
+function fb_ramp_step()
+local(i, filt, c, refresh)
+(
+  coef_ctr += 1;
+  refresh = (coef_ctr & 15) == 0;
+  i = 0;
+  while (i < active_n) (
+    filt = active_idx[i];
+    ramp[filt] ? (
+      c = mute_smooth_coef[filt];
+      mute_gain_s[filt] = smooth_towards(mute_target[filt], mute_gain_s[filt], c);
+      gain_lin_s[filt] = smooth_towards(gain_lin[filt], gain_lin_s[filt], c);
+      freq_s[filt] = smooth_towards(freq_target[filt], freq_s[filt], c);
+      q_s[filt] = smooth_towards(q_target[filt], q_s[filt], c);
+      refresh ? calc_filter_coefs(filt);
+    );
+    i += 1;
+  );
+);
+
+function fb_ramp_step_res()
+local(i, filt, refresh)
+(
+  r_ctr += 1;
+  refresh = (r_ctr & 15) == 0;
+  i = 0;
+  while (i < r_active_n) (
+    filt = r_active_idx[i];
+    r_ramp[filt] ? (
+      r_mute_gain_s[filt] = smooth_towards(mute_target[filt], r_mute_gain_s[filt], RES_SMOOTH_COEF);
+      r_gain_lin_s[filt] = smooth_towards(gain_lin[filt], r_gain_lin_s[filt], RES_SMOOTH_COEF);
+      r_freq_s[filt] = smooth_towards(freq_target[filt], r_freq_s[filt], RES_SMOOTH_COEF);
+      r_dec_s[filt] = smooth_towards(dec_target[filt], r_dec_s[filt], RES_SMOOTH_COEF);
+      // r/norm follow the decay every sample (a 16-sample staircase in the output scale is audible as zipper); only the rotation is refreshed in steps
+      res_calc_decay(filt);
+      refresh ? res_calc_freq(filt);
+    );
+    i += 1;
+  );
+);
+
+// SVF engine for one stereo sample (optionally 2x oversampled); result in svf_l/svf_r
+function fb_sample_svf(in_l, in_r)
+(
+  os_on ? (
+    upL.update_upHist2(in_l);
+    upR.update_upHist2(in_r);
+
+    os_stage = 0;
+    while (os_stage < OVERSAMPLE_FACTOR) (
+      os_stage += 1;
+      os_l = OVERSAMPLE_FACTOR * upL.upSample2();
+      os_r = OVERSAMPLE_FACTOR * upR.upSample2();
+
+      fb_ramp_step();
+
+      os_l = filterbank_process(0, os_l);
+      os_r = filterbank_process(1, os_r);
+
+      downL.update_downHist2(os_l);
+      downR.update_downHist2(os_r);
+
+      os_stage == 1 ? (
+        svf_l = downL.downSample2();
+        svf_r = downR.downSample2();
+      );
+    );
+  ) : (
+    fb_ramp_step();
+    svf_l = filterbank_process(0, in_l);
+    svf_r = filterbank_process(1, in_r);
+  );
+);
+
+// per-sample processing (called from @sample)
+function fb_sample()
+local(in_l, in_r, wn, wo, new_l, new_r, old_l, old_r)
+(
+  spec_pre_on ? ( spectrum.sample0((spl0 + spl1) * 0.5); );
+
+  in_l = spl0; in_r = spl1;
+  fb_svf_running() ? fb_sample_svf(in_l, in_r);
+  fb_res_running() ? (
+    fb_ramp_step_res();
+    res_l = fb_process_res(0, in_l);
+    res_r = fb_process_res(1, in_r);
+  );
+
+  xf_active ? (
+    xf += xf_step;
+    xf >= 1 ? ( xf = 1; xf_active = 0; xf_stop_pending = eng_old; );
+    wn = sin(xf * 0.5 * $pi);
+    wo = cos(xf * 0.5 * $pi);
+    new_l = eng_mode == 0 ? svf_l : res_l;
+    new_r = eng_mode == 0 ? svf_r : res_r;
+    old_l = eng_mode == 0 ? res_l : svf_l;
+    old_r = eng_mode == 0 ? res_r : svf_r;
+    spl0 = old_l * wo + new_l * wn;
+    spl1 = old_r * wo + new_r * wn;
+  ) : eng_mode == 0 ? (
+    spl0 = svf_l; spl1 = svf_r;
+  ) : (
+    spl0 = res_l; spl1 = res_r;
+  );
+
+  spec_post_on ? ( spectrum.sample1((spl0 + spl1) * 0.5); );
+);
+
+// one-time engine setup (constants, memory layout, spectrum, oversamplers, seeded state); called from @init
+function fb_init()
+(
+  SL_WIDE_GAIN = 1; SL_WIDE_MUTE = 2; SL_TANH = 3; SL_GLOBAL_GAIN = 4;
+  SL_OVERSAMPLE = 5; SL_FFT_SIZE = 6; SL_SPECTRUM_MODE = 7; SL_FILTER_MODE = 8;
+  SL_FILT_BASE = 9; SL_PER_FILT = 5;
+
+  MAX_FILT = 6;
+  MAX_STAGES = 3;
+  MAX_CHANNELS = 2;
+  NODE_HIT_RADIUS = 17;
+  DOUBLE_CLICK_TIME = 0.35;
+
+  // node frequencies are stored as 0-100 percent, log-mapped between
+  // MIN_FREQ_HZ and (a safety margin below) the CURRENT project's Nyquist -
+  // this lets dragging/automation reach all the way up to Nyquist regardless
+  // of sample rate, instead of a fixed Hz ceiling.
+  MIN_FREQ_HZ = 20;
+  nyquist_hz = 0.5 * srate;
+  nyquist_margin_hz = 0.49 * srate;
+  freq_log_max = log(nyquist_margin_hz / MIN_FREQ_HZ);
+
+  // Q is edited/automated log-scaled (0.1..200 spans 3 decades) so the
+  // dial/mouse-wheel feel uniform across the whole range instead of the
+  // top ~199 of it being crammed into the last few drag-pixels.
+  Q_MIN = 0.1;
+  Q_MAX = 200;
+  // matches the sliders' own declared default (q1=200 etc.) and
+  // reset_filter()'s reset value - used as the Q for a newly spawned filter
+  // when no filter has ever been selected yet to inherit Q from.
+  DEFAULT_Q = 200;
+  q_log_range = log(Q_MAX / Q_MIN);
+
+  // optionally run the actual filter math at 2x the host sample rate (tan() warping/
+  // cramping near Nyquist at high Q depends only on freq/proc_srate - see
+  // jsfx-conventions.md - so doubling proc_srate halves that ratio for any
+  // given Hz value). oversample_upsamplers.jsfx-inc's polyphase half-band
+  // FIR (vendored from Saike Tools/Basics) handles the up/downsampling;
+  // its 32-sample group delay is reported via pdc_delay so PDC-aware hosts
+  // compensate automatically.
+  OVERSAMPLE_FACTOR = 2;
+
+  // per-filter mute/gain/freq/Q are ramped PER SAMPLE (not just once per block) so a block-rate
+  // step cannot land as an audible discontinuity when the host's buffer is large
+  SVF_RAMP_TIME = 0.05;
+  RES_RAMP_TIME = 0.05;
+
+  // resonator mode: decay time range (T60) behind the Q slider, and the filter-mode crossfade
+  T60_MIN = 0.02;
+  T60_MAX = 30;
+  LN1000 = 6.907755278982137;
+  MODE_XFADE_TIME = 0.06;
+  xf_step = 1 / (MODE_XFADE_TIME * srate);
+  // smooth_towards() moves a FRACTION of the way, hence 1 - exp(-1/(tau*srate))
+  RES_SMOOTH_COEF = 1 - exp(-1 / (RES_RAMP_TIME * srate));
+  T60_REF = 1;
+  RES_NORM_REF = 2 * (1 - exp(-LN1000 / (T60_REF * srate)));
+  RES_DC_R = exp(-2 * $pi * 4 / srate);
+
+  // "settled" tolerances for the dirty-check/snap logic and the ringing-flush threshold
+  SETTLE_REL = 0.000000001;
+  SETTLE_ABS = 0.000001;
+  SETTLE_MUTE = 0.00001;
+  FLUSH_ENERGY = 0.000000001;
+
+  freemem = 0;
+  // spectrum.jsfx-inc owns its own memory allocator - hand it our current
+  // freemem, then reclaim the pointer afterwards so our arrays don't overlap.
+  spectrum.init_memory(freemem);
+  spectrum.init();
+  freemem = spectrum.get_memory_index();
+
+  spectrum.min_freq = MIN_FREQ_HZ;
+  spectrum.max_freq = nyquist_hz;
+  spectrum.freq_log_max = log(spectrum.max_freq / spectrum.min_freq);
+  spectrum.ceiling = 36;
+  spectrum.noise_floor = -90;
+  spectrum.top_margin = 10;
+  spectrum.bottom_margin = 150;
+  spectrum.left_margin = 20;
+  spectrum.right_margin = 20;
+  spectrum.set_block_size(2048 * (2 ^ slider(SL_FFT_SIZE)));
+  // buffer 0 = pre-filterbank (input), buffer 1 = post-filterbank (output)
+  spectrum.set_color(0, 0.2, 0.8, 0.85, 0.5);
+  spectrum.set_fill(0, 1);
+  spectrum.set_color(1, 0.3, 0.9, 0.4, 0.55);
+  spectrum.set_fill(1, 1);
+
+  coef_g = freemem; freemem += MAX_FILT;
+  coef_k = freemem; freemem += MAX_FILT;
+  coef_a1 = freemem; freemem += MAX_FILT;
+  coef_a2 = freemem; freemem += MAX_FILT;
+  coef_a3 = freemem; freemem += MAX_FILT;
+
+  state_z1 = freemem; freemem += MAX_FILT * MAX_STAGES * MAX_CHANNELS;
+  state_z2 = freemem; freemem += MAX_FILT * MAX_STAGES * MAX_CHANNELS;
+
+  freq_s = freemem; freemem += MAX_FILT;
+  freq_target = freemem; freemem += MAX_FILT;
+  gain_s = freemem; freemem += MAX_FILT;
+  q_s = freemem; freemem += MAX_FILT;
+  q_target = freemem; freemem += MAX_FILT;
+  mute_gain_s = freemem; freemem += MAX_FILT;
+  mute_target = freemem; freemem += MAX_FILT;
+  mute_smooth_coef = freemem; freemem += MAX_FILT;
+  gain_lin = freemem; freemem += MAX_FILT;
+  gain_lin_s = freemem; freemem += MAX_FILT;
+  slope = freemem; freemem += MAX_FILT;
+  cache_f = freemem; freemem += MAX_FILT;
+  cache_g = freemem; freemem += MAX_FILT;
+  cache_q = freemem; freemem += MAX_FILT;
+  raw_freq_hz = freemem; freemem += MAX_FILT;
+  conv = freemem; freemem += MAX_FILT;
+  ramp = freemem; freemem += MAX_FILT;
+  alive = freemem; freemem += MAX_FILT;
+  hold = freemem; freemem += MAX_FILT;
+  active_idx = freemem; freemem += MAX_FILT;
+
+  dec_target = freemem; freemem += MAX_FILT;
+  raw_dec = freemem; freemem += MAX_FILT;
+  r_freq_s = freemem; freemem += MAX_FILT;
+  r_dec_s = freemem; freemem += MAX_FILT;
+  r_gain_lin_s = freemem; freemem += MAX_FILT;
+  r_mute_gain_s = freemem; freemem += MAX_FILT;
+  r_ramp = freemem; freemem += MAX_FILT;
+  r_alive = freemem; freemem += MAX_FILT;
+  r_hold = freemem; freemem += MAX_FILT;
+  r_active_idx = freemem; freemem += MAX_FILT;
+  r_c = freemem; freemem += MAX_FILT;
+  r_s = freemem; freemem += MAX_FILT;
+  r_r = freemem; freemem += MAX_FILT;
+  r_norm = freemem; freemem += MAX_FILT;
+  res_re = freemem; freemem += MAX_FILT * MAX_STAGES * MAX_CHANNELS;
+  res_im = freemem; freemem += MAX_FILT * MAX_STAGES * MAX_CHANNELS;
+  res_dcx = freemem; freemem += MAX_CHANNELS;
+  res_dcy = freemem; freemem += MAX_CHANNELS;
+  res_ux = freemem; freemem += MAX_CHANNELS;
+  res_uy = freemem; freemem += MAX_CHANNELS;
+  default_freq = freemem; freemem += MAX_FILT;
+
+  fb_init_state();
+);

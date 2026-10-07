@@ -1,0 +1,235 @@
+desc:filterbank: bottom detail/global panels
+
+@init
+
+function draw_filter_detail_row(filt, x, y, w, h)
+local(resmode)
+(
+  hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+
+  // subtle whole-panel tint plus a solid accent stripe along the top
+  // edge, both keyed to the filter's own hue, so the detail panel reads
+  // at a glance as "belonging to" the currently selected filter.
+  gfx_set(0.11 + node_r * 0.1, 0.11 + node_g * 0.1, 0.14 + node_b * 0.1, 1);
+  gfx_rect(x, y, w, h);
+  gfx_set(node_r, node_g, node_b, 0.9);
+  gfx_rect(x, y, w, 2);
+  gfx_set(0.3, 0.3, 0.36, 1);
+  gfx_rect(x, y + h - 1, w, 1);
+  gfx_rect(x, y, 1, h);
+  gfx_rect(x + w - 1, y, 1, h);
+
+  gfx_set(node_r, node_g, node_b, 1);
+  gfx_rect(x + 8, y + 8, 10, 10);
+
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = x + 24; gfx_y = y + 6; gfx_printf("Filter %d", filt + 1);
+
+  draw_active_toggle(x + w - 34, y + 5, sl_mute(filt));
+
+  draw_param_dial(x + w * 0.125, y + 66, 30, filt, 0, "FREQ", sprintf(#, "%.0f Hz", node_freq(filt)));
+  draw_param_dial(x + w * 0.375, y + 66, 30, filt, 1, "GAIN", sprintf(#, "%.1f dB", node_gain(filt)));
+  resmode = slider(SL_FILTER_MODE) > 0.5;
+  resmode ? draw_param_dial(x + w * 0.625, y + 66, 30, filt, 2, "DECAY", sprintf(#, "%.2f s", fb_decay_from_q(slider(sl_q(filt)))))
+          : draw_param_dial(x + w * 0.625, y + 66, 30, filt, 2, "Q", sprintf(#, "%.2f", slider(sl_q(filt))));
+  draw_param_dial(x + w * 0.875, y + 66, 30, filt, 3, "SLOPE", sprintf(#, "%d", slope[filt]));
+);
+
+function draw_wideband_control(x, y, w, h)
+(
+  gfx_set(0.11, 0.11, 0.14, 1);
+  gfx_rect(x, y, w, h);
+  gfx_set(0.3, 0.3, 0.36, 1);
+  gfx_rect(x, y, w, 1);
+  gfx_rect(x, y + h - 1, w, 1);
+  gfx_rect(x, y, 1, h);
+  gfx_rect(x + w - 1, y, 1, h);
+
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = x + 10; gfx_y = y + 6;
+  gfx_drawstr("Wideband");
+
+  draw_active_toggle(x + w - 34, y + 5, SL_WIDE_MUTE);
+
+  // same x as the filters' GAIN dial so it does not jump when the selection changes
+  draw_param_dial(x + w * 0.375, y + 66, 30, -1, 1, "GAIN", sprintf(#, "%.1f dB", node_gain(-1)));
+);
+
+// ---------------------------------------------------------------------
+// standalone panel (global, not tied to the selected filter) for controls
+// that apply to every filter at once: a checkbox turning tanh saturation
+// on/off, and a fader offsetting all filter gains by the same dB amount -
+// both exclude the wideband, which stays clean/untouched by either.
+// ---------------------------------------------------------------------
+function draw_global_panel(x, y, w, h)
+local(on, box, bx, by2, gy, track_y, track_h, track_w, v01, fill_w)
+(
+  gfx_set(0.11, 0.11, 0.14, 1);
+  gfx_rect(x, y, w, h);
+  gfx_set(0.3, 0.3, 0.36, 1);
+  gfx_rect(x, y, w, 1);
+  gfx_rect(x, y + h - 1, w, 1);
+  gfx_rect(x, y, 1, h);
+  gfx_rect(x + w - 1, y, 1, h);
+
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = x + 10; gfx_y = y + 6;
+  gfx_drawstr("Global (all filters)");
+
+  on = slider(SL_TANH) > 0.5;
+  box = 16;
+  bx = x + 10; by2 = y + 30;
+  gfx_set(on ? 0.2 : 0.3, on ? 0.65 : 0.3, 0.3, 1);
+  gfx_rect(bx, by2, box, box);
+  gfx_set(0.8, 0.8, 0.8, 1);
+  gfx_rect(bx, by2, box, 1);
+  gfx_rect(bx, by2 + box - 1, box, 1);
+  gfx_rect(bx, by2, 1, box);
+  gfx_rect(bx + box - 1, by2, 1, box);
+  on ? (
+    gfx_set(1, 1, 1, 1);
+    gfx_line(bx + 3, by2 + 8, bx + 7, by2 + 12, 1);
+    gfx_line(bx + 7, by2 + 12, bx + 13, by2 + 3, 1);
+  );
+
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = bx + box + 8; gfx_y = by2 + 2;
+  gfx_drawstr("Tanh Distortion");
+
+  (mouse_cap & 1) && !(mouse_cap_prev & 1) && mouse_x >= bx && mouse_x <= bx + box && mouse_y >= by2 && mouse_y <= by2 + box ? (
+    slider(SL_TANH) = on ? 0 : 1;
+    slider_automate(slider(SL_TANH));
+  );
+
+  // click/drag anywhere on the track to set the global gain offset
+  // directly (absolute position), like a standard fader.
+  gy = by2 + box + 16;
+  gfx_set(1, 1, 1, 0.9);
+  gfx_x = x + 10; gfx_y = gy;
+  gfx_printf("Gain Offset: %.1f dB", slider(SL_GLOBAL_GAIN));
+
+  track_y = gy + 16; track_h = 10; track_w = w - 20;
+  gfx_set(0.2, 0.2, 0.24, 1);
+  gfx_rect(x + 10, track_y, track_w, track_h);
+  gfx_set(0.3, 0.3, 0.36, 1);
+  gfx_rect(x + 10, track_y, track_w, 1);
+  gfx_rect(x + 10, track_y + track_h - 1, track_w, 1);
+
+  v01 = max(0, min(1, (slider(SL_GLOBAL_GAIN) + 40) / 80));
+  fill_w = track_w * v01;
+  gfx_set(1, 0.82, 0.25, 0.85);
+  gfx_rect(x + 10, track_y, fill_w, track_h);
+
+  (mouse_cap & 1) && mouse_x >= x + 10 && mouse_x <= x + 10 + track_w && mouse_y >= track_y - 4 && mouse_y <= track_y + track_h + 4 ? (
+    v01 = max(0, min(1, (mouse_x - (x + 10)) / track_w));
+    slider(SL_GLOBAL_GAIN) = v01 * 80 - 40;
+    slider_automate(slider(SL_GLOBAL_GAIN));
+  );
+);
+
+function draw_bottom_panel()
+local(filt, bx, by, bw, bh, idx, panel_y, panel_h, now, global_panel_w, detail_w)
+(
+  !(mouse_cap & 1) ? dial_drag_active = 0;
+
+  by = gfx_h - spectrum.bottom_margin;
+  gfx_set(0.08, 0.08, 0.1, 1);
+  gfx_rect(0, by, gfx_w, spectrum.bottom_margin);
+
+  // navigator strip: single click selects a filter (shown in the shared
+  // detail panel below), double-click mutes/unmutes it - same convention
+  // as double-clicking a node in the graph.
+  bw = 16; bh = 10;
+  filt = 0;
+  while (filt < MAX_FILT) (
+    bx = 6 + filt * (bw + 3);
+    hsv_to_rgb(filt / MAX_FILT, 0.75, 1);
+    idx = sl_mute(filt);
+    slider(idx) > 0.5 ? gfx_set(0.25, 0.25, 0.25, 1) : gfx_set(node_r, node_g, node_b, 1);
+    gfx_rect(bx, by + 4, bw, bh);
+    selected_filt == filt ? ( gfx_set(1, 1, 1, 0.9); gfx_rect(bx, by + 2, bw, 1); );
+    (mouse_cap & 1) && !(mouse_cap_prev & 1) && mouse_x >= bx && mouse_x <= bx + bw && mouse_y >= by + 4 && mouse_y <= by + 4 + bh ? (
+      now = time_precise();
+      (nav_last_click_filt == filt) && (now - nav_last_click_time < DOUBLE_CLICK_TIME) ? (
+        slider(idx) = slider(idx) > 0.5 ? 0 : 1;
+        slider_automate(slider(idx));
+      ) : (
+        selected_filt = filt;
+        last_selected_filt = filt;
+      );
+      nav_last_click_time = now;
+      nav_last_click_filt = filt;
+    );
+    filt += 1;
+  );
+
+  // wideband navigator button - selects "wideband" into the SAME shared
+  // detail panel below (replacing the old always-visible separate
+  // wideband box), double-click still mutes/unmutes it. Same size as a
+  // filter dot, right-justified directly under the graph's white
+  // wideband marker (not appended after the filter row).
+  bx = (gfx_w - spectrum.right_margin - 20) - bw / 2;
+  slider(SL_WIDE_MUTE) > 0.5 ? gfx_set(0.3, 0.3, 0.32, 1) : gfx_set(0.85, 0.85, 0.85, 1);
+  gfx_rect(bx, by + 4, bw, bh);
+  selected_filt == -2 ? ( gfx_set(1, 1, 1, 0.9); gfx_rect(bx, by + 2, bw, 1); );
+  (mouse_cap & 1) && !(mouse_cap_prev & 1) && mouse_x >= bx && mouse_x <= bx + bw && mouse_y >= by + 4 && mouse_y <= by + 4 + bh ? (
+    now = time_precise();
+    (nav_last_click_filt == -2) && (now - nav_last_click_time < DOUBLE_CLICK_TIME) ? (
+      slider(SL_WIDE_MUTE) = slider(SL_WIDE_MUTE) > 0.5 ? 0 : 1;
+      slider_automate(slider(SL_WIDE_MUTE));
+    ) : (
+      selected_filt = -2;
+    );
+    nav_last_click_time = now;
+    nav_last_click_filt = -2;
+  );
+
+  panel_y = by + 20;
+  panel_h = spectrum.bottom_margin - 26;
+  // a fixed-width column on the right, separate from (and always visible
+  // regardless of) the selection-driven detail panel to its left.
+  global_panel_w = 180;
+  detail_w = gfx_w - 12 - global_panel_w - 10;
+
+  gfx_set(1, 1, 1, 0.9);
+  selected_filt >= 0 ? draw_filter_detail_row(selected_filt, 6, panel_y, detail_w, panel_h) :
+  selected_filt == -2 ? draw_wideband_control(6, panel_y, detail_w, panel_h) : (
+    gfx_x = 6; gfx_y = panel_y + panel_h / 2 - 6;
+    gfx_drawstr("Click a node to inspect/edit its parameters.");
+  );
+
+  draw_global_panel(gfx_w - 6 - global_panel_w, panel_y, global_panel_w, panel_h);
+);
+
+// GUI interaction state defaults; called from @init
+function fb_gui_init()
+(
+  selected_filt = -1;
+  hovered_filt = -1;
+  drag_filt = -1;
+  last_selected_filt = -1;
+  last_click_time = 0;
+  last_click_filt = -1;
+
+  edit_active = 0;
+  edit_filt = -1;
+  edit_field = 0;
+  #edit_text = "";
+  edit_box_x = 0; edit_box_y = 0; edit_box_w = 0; edit_box_h = 0;
+  edit_opened_this_frame = 0;
+
+  dial_click_last_time = 0;
+  dial_click_last_filt = -99;
+  dial_click_last_field = -99;
+
+  dial_drag_active = 0;
+  dial_drag_filt = -1;
+  dial_drag_field = -1;
+  dial_drag_oldy = 0;
+
+  // symbolic per-filter markers (peak/Q/bandwidth) replace the old combined
+  // response curve by default; the curve code is kept and reachable via the
+  // toggle button for comparison/fallback.
+  curve_style_symbolic = 1;
+  mouse_cap_prev = 0;
+);

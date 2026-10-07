@@ -1,0 +1,86 @@
+desc:filterbank: slider/frequency/Q mapping helpers and generic math
+
+@init
+
+// slider numbers: globals first, then SL_PER_FILT sliders per filter starting at SL_FILT_BASE
+// (SL_* values are assigned in fb_init(); the sliderN: header lines must match them)
+function sl_freq(f) ( SL_FILT_BASE + f * SL_PER_FILT; );
+function sl_gain(f) ( SL_FILT_BASE + f * SL_PER_FILT + 1; );
+function sl_q(f) ( SL_FILT_BASE + f * SL_PER_FILT + 2; );
+function sl_slope(f) ( SL_FILT_BASE + f * SL_PER_FILT + 3; );
+function sl_mute(f) ( SL_FILT_BASE + f * SL_PER_FILT + 4; );
+
+function per_to_freq(per)
+(
+  MIN_FREQ_HZ * exp(freq_log_max * per / 100);
+);
+
+function freq_to_per(freq)
+(
+  100 * log(max(freq, MIN_FREQ_HZ) / MIN_FREQ_HZ) / freq_log_max;
+);
+
+// ---------------------------------------------------------------------
+// raw (unsmoothed) frequency/gain for a node's drawn/hit-tested position -
+// reads the slider directly instead of the @block-smoothed freq_s/gain_s
+// (which exists only to de-zipper the audio path), so a dragged node
+// tracks the mouse 1:1 every frame instead of visibly lagging behind it.
+// filt == -1 selects the wideband gain slider.
+// ---------------------------------------------------------------------
+function node_freq(filt)
+(
+  per_to_freq(slider(sl_freq(filt)));
+);
+
+function node_gain(filt)
+(
+  filt == -1 ? slider(SL_WIDE_GAIN) : slider(sl_gain(filt));
+);
+
+function q_to01(q)
+(
+  log(max(q, Q_MIN) / Q_MIN) / q_log_range;
+);
+
+function q01_to_q(v01)
+(
+  Q_MIN * exp(q_log_range * max(0, min(1, v01)));
+);
+
+// ---------------------------------------------------------------------
+// generic one-pole smoother, reusable for any parameter
+// ---------------------------------------------------------------------
+function smooth_towards(target, current, coef)
+(
+  current + (target - current) * coef;
+);
+
+// EEL2 has no built-in tanh ('tanh' itself is a reserved/intrinsic name
+// that can't be shadowed by a user function, hence the _sat suffix) -
+// standard exp()-based definition, clamped so exp(2x) can't overflow to
+// inf/NaN at extreme drive levels.
+function tanh_sat(x)
+local(e2x)
+(
+  x > 20 ? 1 : x < -20 ? -1 : (
+    e2x = exp(2 * x);
+    (e2x - 1) / (e2x + 1);
+  );
+);
+
+// resonator mode reuses the Q slider as a log-scaled decay time (T60, seconds to -60 dB)
+function fb_decay_from_q(q)
+(
+  T60_MIN * exp(log(T60_MAX / T60_MIN) * q_to01(q));
+);
+
+function fb_q_from_decay(t60)
+(
+  q01_to_q(log(max(t60, T60_MIN) / T60_MIN) / log(T60_MAX / T60_MIN));
+);
+
+// Q that a filter effectively has at frequency f in the current mode (resonator: Q = pi*f*T60/ln(1000))
+function fb_eff_q(filt, f)
+(
+  slider(SL_FILTER_MODE) > 0.5 ? $pi * f * fb_decay_from_q(slider(sl_q(filt))) / LN1000 : slider(sl_q(filt));
+);

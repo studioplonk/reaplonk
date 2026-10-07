@@ -1,0 +1,162 @@
+desc:filterbank: TPT state-variable bandpass engine and its response math
+
+@init
+
+// ---------------------------------------------------------------------
+// Cytomic/Andy Simper "topology-preserving transform" (TPT) state-variable
+// bandpass, constant 0dB peak gain. Unlike a direct-form RBJ biquad (which
+// uses the un-prewarped w0 = 2*pi*f/srate), the g = tan(pi*f/srate) term
+// here properly prewarps the frequency, so Q/bandwidth stays accurate
+// instead of cramping as freq approaches Nyquist. Reference:
+// https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf (same math
+// ReEQ.jsfx uses via its svf_filter.jsfx-inc).
+// ---------------------------------------------------------------------
+function calc_filter_coefs(filt)
+local(g)
+(
+  g = tan($pi * freq_s[filt] / proc_srate);
+  coef_g[filt] = g;
+  coef_k[filt] = 1 / q_s[filt];
+  coef_a1[filt] = 1 / (1 + g * (g + coef_k[filt]));
+  coef_a2[filt] = g * coef_a1[filt];
+  coef_a3[filt] = g * coef_a2[filt];
+);
+
+// ---------------------------------------------------------------------
+// run one sample through filt's cascade of slope[filt] identical TPT
+// bandpass stages
+// ---------------------------------------------------------------------
+function bandpass_cascade(filt, ch, x)
+local(base, stage, n, ic1, ic2, v1, v2, v3, a1, a2, a3, k)
+(
+  base = ch * MAX_FILT * MAX_STAGES + filt * MAX_STAGES;
+  n = slope[filt];
+  a1 = coef_a1[filt]; a2 = coef_a2[filt]; a3 = coef_a3[filt]; k = coef_k[filt];
+  stage = 0;
+  while (stage < n) (
+    ic1 = state_z1[base + stage];
+    ic2 = state_z2[base + stage];
+    v3 = x - ic2;
+    v1 = a1 * ic1 + a2 * v3;
+    v2 = ic2 + a2 * ic1 + a3 * v3;
+    state_z1[base + stage] = 2 * v1 - ic1;
+    state_z2[base + stage] = 2 * v2 - ic2;
+    x = v1 * k;
+    stage += 1;
+  );
+  x;
+);
+
+// ---------------------------------------------------------------------
+// zero out stage state beyond the new (shrunk) stage count, so a filter
+// doesn't resume with stale state (and an audible click) if slope grows
+// again later
+// ---------------------------------------------------------------------
+function clear_stale_stage_state(filt, new_n, old_n)
+local(ch, stage, base)
+(
+  ch = 0;
+  while (ch < MAX_CHANNELS) (
+    base = ch * MAX_FILT * MAX_STAGES + filt * MAX_STAGES;
+    stage = new_n;
+    while (stage < old_n) (
+      state_z1[base + stage] = 0;
+      state_z2[base + stage] = 0;
+      stage += 1;
+    );
+    ch += 1;
+  );
+);
+
+// ---------------------------------------------------------------------
+// combined parallel-filterbank magnitude response (dB) at a given
+// frequency. Unlike a SERIAL cascade (where stage responses multiply),
+// these filters run in PARALLEL and are summed - so each filter's complex
+// response must be raised to its own slope's power (identical cascaded
+// stages multiply), then all filters' complex responses are SUMMED
+// (real/imaginary parts separately) before the aggregate is converted to
+// dB at the very end.
+// ---------------------------------------------------------------------
+function calc_filterbank_response_db(freq)
+local(filt, zr, zi, zsq_r, zsq_i, twoz_r, twoz_i, g, k, gsq, gk, nr, ni, dr, di, norm, hr, hi, tr, ti, mag, ang, sumre, sumim, usre, usim, mfac, wg)
+(
+  // z^-1 = e^{-i*2*pi*freq/proc_srate}, shared by every filter at this freq
+  zr = cos(-2 * $pi * freq / proc_srate);
+  zi = sin(-2 * $pi * freq / proc_srate);
+  zsq_r = zr * zr - zi * zi;
+  zsq_i = 2 * zr * zi;
+  twoz_r = 2 * zr; twoz_i = 2 * zi;
+
+  sumre = 0; sumim = 0; usre = 0; usim = 0;
+  filt = 0;
+  while (filt < MAX_FILT) (
+    mfac = mute_gain_s[filt];
+    mfac > 0.0001 ? (
+      // closed-form complex response of one TPT bandpass stage (m0=0, m1=k, m2=0)
+      g = coef_g[filt]; k = coef_k[filt];
+      gsq = g * g; gk = g * k;
+      nr = -gk * (zsq_r - 1.0);
+      ni = -gk * zsq_i;
+      dr = gsq + gk + zsq_r * (gsq - gk + 1.0) + zr * (2 * gsq - 2.0) + 1.0;
+      di = zsq_i * (gsq - gk + 1.0) + zi * (2 * gsq - 2.0);
+      norm = max(dr * dr + di * di, 0.0000000001);
+      hr = (nr * dr + ni * di) / norm;
+      hi = (ni * dr - nr * di) / norm;
+      // cascading n identical stages multiplies the complex response n
+      // times - De Moivre's formula (r^n, n*theta) gets there directly
+      // instead of looping the complex multiplication stage times.
+      mag = sqrt(hr * hr + hi * hi) ^ slope[filt];
+      ang = atan2(hi, hr) * slope[filt];
+      tr = mag * cos(ang);
+      ti = mag * sin(ang);
+      sumre += tr * mfac * gain_lin_s[filt];
+      sumim += ti * mfac * gain_lin_s[filt];
+      usre += tr * mfac;
+      usim += ti * mfac;
+    );
+    filt += 1;
+  );
+
+  // fold in the wideband complement: H_wide = wg * (1 - H_unscaled_filter_sum)
+  wg = wideband_mute_gain_s * wideband_gain_lin;
+  sumre = sumre + wg * (1 - usre);
+  sumim = sumim - wg * usim;
+
+  20 * log10(max(sqrt(sumre * sumre + sumim * sumim), 0.0000000001));
+);
+
+// ---------------------------------------------------------------------
+// find the frequency above (dir>0) or below (dir<0) a filter's center
+// where its CASCADED (slope-stage) response has dropped by 12dB.
+// Closed-form instead of a numeric search: a single TPT bandpass stage,
+// expressed in its own prewarped tangent-frequency variable
+// X = tan(pi*f/srate) / tan(pi*f0/srate), is an exact ideal analog
+// bandpass |H(X)|^2 = (kX)^2 / ((1-X^2)^2 + (kX)^2) with k=1/Q - so its
+// -N dB points solve the quadratic X^2 -+ C*X - 1 = 0 for
+// C = k*sqrt((1-T)/T), T = 10^(-N/10), then unwarp X back to Hz. This
+// also sidesteps the old bisection's reliance on 30 iterations and an
+// assumed-monotonic search range, and is exact regardless of how close
+// the edge sits to the filter's own center frequency. Reads the LIVE
+// slider values (not the audio thread's smoothed freq_s/q_s/slope,
+// which only update while a block is actually processing and can
+// otherwise lag far behind what the dials are currently showing) so the
+// symbolic markers always track what's on screen, even with playback
+// stopped.
+// ---------------------------------------------------------------------
+function find_band_edge_12db(filt, dir)
+local(center_freq, q, stages, target_db, lin_target, k, c, x, g0, edge_hz)
+(
+  center_freq = node_freq(filt);
+  q = fb_eff_q(filt, center_freq);
+  stages = slider(sl_slope(filt));
+
+  target_db = -12 / stages;
+  lin_target = 10 ^ (target_db / 10);
+  k = 1 / q;
+  c = k * sqrt((1 - lin_target) / lin_target);
+  g0 = tan($pi * center_freq / proc_srate);
+
+  x = dir < 0 ? (-c + sqrt(c * c + 4)) / 2 : (c + sqrt(c * c + 4)) / 2;
+  edge_hz = (proc_srate / $pi) * atan(x * g0);
+  max(MIN_FREQ_HZ, min(nyquist_margin_hz, edge_hz));
+);

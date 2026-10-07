@@ -1,0 +1,327 @@
+desc:filterbank: shared GUI widgets (dials, buttons, text entry)
+
+@init
+
+// ---------------------------------------------------------------------
+// HSV to RGB, used to give every filter node a distinct, stable color
+// (writes into the globals node_r/node_g/node_b)
+// ---------------------------------------------------------------------
+function hsv_to_rgb(h, s, v)
+local(i, f, p, q, t)
+(
+  i = floor(h * 6);
+  f = h * 6 - i;
+  p = v * (1 - s);
+  q = v * (1 - f * s);
+  t = v * (1 - (1 - f) * s);
+  i = i % 6;
+  i == 0 ? ( node_r = v; node_g = t; node_b = p; ) :
+  i == 1 ? ( node_r = q; node_g = v; node_b = p; ) :
+  i == 2 ? ( node_r = p; node_g = v; node_b = t; ) :
+  i == 3 ? ( node_r = p; node_g = q; node_b = v; ) :
+  i == 4 ? ( node_r = t; node_g = p; node_b = v; ) :
+  ( node_r = v; node_g = p; node_b = q; );
+);
+
+// ---------------------------------------------------------------------
+// typed numeric entry (edit_filt == -1 means the wideband; its only
+// editable field is gain, field is still passed as 1 for consistency)
+// ---------------------------------------------------------------------
+function start_text_edit(filt, field)
+(
+  edit_active = 1;
+  edit_filt = filt;
+  edit_field = field;
+  #edit_text = "";
+  edit_opened_this_frame = 1;
+);
+
+function commit_text_edit()
+local(val, ok, idx)
+(
+  ok = match("%f", #edit_text, val);
+  ok ? (
+    edit_filt == -1 ? (
+      slider(SL_WIDE_GAIN) = max(-80, min(30, val));
+      slider_automate(slider(SL_WIDE_GAIN));
+    ) : (
+      edit_field == 0 ? ( idx = sl_freq(edit_filt); slider(idx) = freq_to_per(max(MIN_FREQ_HZ, min(nyquist_margin_hz, val))); ) :
+      edit_field == 1 ? ( idx = sl_gain(edit_filt); slider(idx) = max(-80, min(30, val)); ) :
+      edit_field == 2 ? ( idx = sl_q(edit_filt); slider(idx) = slider(SL_FILTER_MODE) > 0.5 ? fb_q_from_decay(val) : max(Q_MIN, min(Q_MAX, val)); ) :
+      ( idx = sl_slope(edit_filt); slider(idx) = max(1, min(MAX_STAGES, floor(val + 0.5))); );
+      slider_automate(slider(idx));
+    );
+  );
+  edit_active = 0;
+);
+
+function handle_text_edit()
+local(c, outside)
+(
+  // call unconditionally every frame so mouse_cap registers clicks reliably
+  c = gfx_getchar();
+  edit_active ? (
+    c == 13 ? commit_text_edit() :
+    c == 27 ? edit_active = 0 :
+    c == 8 ? ( strlen(#edit_text) > 0 ? strcpy_substr(#edit_text, #edit_text, 0, strlen(#edit_text) - 1); ) :
+    ((c >= 48 && c <= 57) || c == 46 || c == 45) ? (
+      strlen(#edit_text) == 0 ? sprintf(#edit_text, "%c", c) : str_setchar(#edit_text, strlen(#edit_text), c);
+    );
+
+    // clicking anywhere outside the box commits and closes it, like a text
+    // field losing focus - skipped on the click that opened/retargeted the
+    // box this same frame, so that click doesn't instantly close it again.
+    outside = mouse_x < edit_box_x || mouse_x > edit_box_x + edit_box_w || mouse_y < edit_box_y || mouse_y > edit_box_y + edit_box_h;
+    edit_active && (mouse_cap & 1) && !(mouse_cap_prev & 1) && !edit_opened_this_frame && outside ? commit_text_edit();
+  );
+  edit_opened_this_frame = 0;
+);
+
+function draw_clickable_value(x, y, w, h, text, filt, field)
+(
+  (mouse_cap & 1) && !(mouse_cap_prev & 1) && mouse_x >= x && mouse_x <= x + w && mouse_y >= y && mouse_y <= y + h ? start_text_edit(filt, field);
+  gfx_x = x; gfx_y = y;
+  gfx_drawstr(text);
+);
+
+function draw_text_edit_box(x, y)
+(
+  edit_box_x = x; edit_box_y = y - 2; edit_box_w = 90; edit_box_h = 16;
+  gfx_set(0, 0, 0, 0.9);
+  gfx_rect(x, y - 2, 90, 16);
+  gfx_set(1, 1, 0.4, 1);
+  gfx_rect(x, y - 2, 90, 1);
+  gfx_x = x + 3; gfx_y = y;
+  gfx_drawstr(#edit_text);
+  gfx_drawstr("_");
+);
+
+// ---------------------------------------------------------------------
+// rounded "capsule" shape (rect with semicircular end caps), same
+// geometry as ReJJ/ReEQ/ReEQ.jsfx's draw_capsule().
+// ---------------------------------------------------------------------
+function draw_capsule(x, y, w, h)
+local(radius, halfh)
+(
+  radius = h * 0.5;
+  halfh = h * 0.5;
+  gfx_rect(x, y, w, h + 1);
+  gfx_circle(x, y + halfh, radius, 1);
+  gfx_circle(x + w, y + halfh, radius, 1);
+);
+
+// ---------------------------------------------------------------------
+// normalized (0..1) position of a dial's current value, for drawing.
+// field: 0=freq (uses the slider's own 0-100% storage directly),
+// 1=gain (-80..30 dB, filt==-1 selects the wideband gain slider),
+// 2=q (Q_MIN..Q_MAX, log-scaled), 3=slope (1-3 stages).
+// ---------------------------------------------------------------------
+function dial_get01(filt, field)
+(
+  field == 0 ? slider(sl_freq(filt)) / 100 :
+  field == 1 ? ( (slider(filt == -1 ? SL_WIDE_GAIN : sl_gain(filt)) + 80) / 110 ) :
+  field == 2 ? q_to01(slider(sl_q(filt))) :
+  ( (slider(sl_slope(filt)) - 1) / (MAX_STAGES - 1) );
+);
+
+// ---------------------------------------------------------------------
+// apply a vertical mouse-drag delta (in pixels) to the dial's underlying
+// slider - drag up increases, drag down decreases, mirroring ReEQ's
+// handle_number_dial() convention.
+// ---------------------------------------------------------------------
+function dial_apply_drag(filt, field, dy)
+local(idx, v01)
+(
+  field == 0 ? (
+    idx = sl_freq(filt);
+    slider(idx) = max(0, min(100, slider(idx) - dy * (100 / 250)));
+  ) : field == 1 ? (
+    idx = filt == -1 ? SL_WIDE_GAIN : sl_gain(filt);
+    slider(idx) = max(-80, min(30, slider(idx) - dy * (110 / 250)));
+  ) : field == 2 ? (
+    idx = sl_q(filt);
+    v01 = max(0, min(1, q_to01(slider(idx)) - dy / 250));
+    slider(idx) = q01_to_q(v01);
+  ) : (
+    // slope is a quantized 1-3 integer, so re-deriving v01 from the
+    // already-rounded slider value (as the other fields do) would throw
+    // away any sub-step drag progress every frame, making the dial feel
+    // nearly impossible to turn - dial_drag_v01 instead accumulates the
+    // continuous position across the whole drag gesture.
+    idx = sl_slope(filt);
+    dial_drag_v01 = max(0, min(1, dial_drag_v01 - dy / 250));
+    slider(idx) = floor(1 + dial_drag_v01 * (MAX_STAGES - 1) + 0.5);
+  );
+  slider_automate(slider(idx));
+);
+
+// ---------------------------------------------------------------------
+// one rotary dial widget: label above, arc+needle indicator, click-to-
+// type value text below (reuses draw_clickable_value/draw_text_edit_box),
+// drag-anywhere-on-the-dial-face to adjust (reuses the de-hum-shared
+// gfx_arc knob look from ReJJ/ReEQ/ReEQ.jsfx's draw_dial()).
+// ---------------------------------------------------------------------
+function draw_param_dial(cx, cy, r, filt, field, label, valuetext)
+local(v01, start, end, ang, arc_ofs, w, h, dist, now)
+(
+  v01 = max(0, min(1, dial_get01(filt, field)));
+  start = 0.75 * $pi;
+  end = 2.25 * $pi;
+  ang = start + (end - start) * v01;
+  // gfx_arc's angle 0 points to the TOP of the circle, 90 degrees
+  // rotated from the cos()/sin() convention used below for the needle -
+  // ReEQ.jsfx's draw_dial() compensates for this with the same offset,
+  // which filterbank's arc was previously missing (the yellow fill and
+  // the white needle pointed at visibly different angles).
+  arc_ofs = $pi / 2;
+
+  gfx_set(0.07, 0.07, 0.09, 1);
+  gfx_arc(cx, cy, r, start + arc_ofs, end + arc_ofs, 1);
+  gfx_set(1, 0.82, 0.25, 1);
+  gfx_arc(cx, cy, r, start + arc_ofs, ang + arc_ofs, 1);
+  gfx_set(1, 1, 1, 1);
+  gfx_line(cx, cy, cx + r * 0.8 * cos(ang), cy + r * 0.8 * sin(ang));
+  gfx_line(cx + 1, cy, cx + 1 + r * 0.8 * cos(ang), cy + r * 0.8 * sin(ang));
+  gfx_set(0.07, 0.07, 0.09, 1);
+  gfx_circle(cx, cy, r * 0.55, 1);
+  gfx_set(0.5, 0.5, 0.56, 1);
+  gfx_circle(cx, cy, r * 0.55, 0, 1);
+
+  gfx_set(0.75, 0.75, 0.8, 1);
+  gfx_measurestr(label, w, h);
+  gfx_x = cx - w / 2; gfx_y = cy - r - 16;
+  gfx_drawstr(label);
+
+  gfx_measurestr(valuetext, w, h);
+  gfx_set(1, 1, 1, 0.95);
+  edit_active && edit_filt == filt && edit_field == field ? draw_text_edit_box(cx - w / 2, cy + r + 6) :
+    draw_clickable_value(cx - w / 2, cy + r + 6, w, 14, valuetext, filt, field);
+
+  dist = sqrt((mouse_x - cx) * (mouse_x - cx) + (mouse_y - cy) * (mouse_y - cy));
+  (mouse_cap & 1) && !(mouse_cap_prev & 1) && dist <= r + 4 ? (
+    now = time_precise();
+    (dial_click_last_filt == filt) && (dial_click_last_field == field) && (now - dial_click_last_time < DOUBLE_CLICK_TIME) ? (
+      start_text_edit(filt, field);
+    ) : (
+      dial_drag_active = 1; dial_drag_filt = filt; dial_drag_field = field; dial_drag_oldy = mouse_y;
+      dial_drag_v01 = dial_get01(filt, field);
+    );
+    dial_click_last_time = now;
+    dial_click_last_filt = filt;
+    dial_click_last_field = field;
+  );
+  (mouse_cap & 1) && dial_drag_active && dial_drag_filt == filt && dial_drag_field == field ? (
+    dial_apply_drag(filt, field, mouse_y - dial_drag_oldy);
+    dial_drag_oldy = mouse_y;
+  );
+);
+
+// ---------------------------------------------------------------------
+// generic on/off toggle button (same shape as de-hum's)
+// ---------------------------------------------------------------------
+function draw_toggle_button(bx, by, bw, bh, label, state)
+local(inside, clicked)
+(
+  inside = (mouse_x >= bx) && (mouse_x <= bx + bw) && (mouse_y >= by) && (mouse_y <= by + bh);
+  clicked = inside && (mouse_cap & 1) && !(mouse_cap_prev & 1);
+  clicked ? state = !state;
+
+  state ? gfx_set(0.2, 0.65, 0.3, 1) : gfx_set(0.3, 0.3, 0.3, 1);
+  gfx_rect(bx, by, bw, bh);
+  gfx_set(0.8, 0.8, 0.8, 1);
+  gfx_rect(bx, by, bw, 1);
+  gfx_rect(bx, by + bh - 1, bw, 1);
+  gfx_rect(bx, by, 1, bh);
+  gfx_rect(bx + bw - 1, by, 1, bh);
+
+  gfx_x = bx + 6; gfx_y = by + 4;
+  gfx_drawstr(label);
+
+  state;
+);
+
+// four-state button cycling the spectrum display: Off > Pre > Pre+Post > Post
+function draw_spectrum_mode_button(bx, by, bw, bh)
+local(inside, clicked, mode)
+(
+  mode = slider(SL_SPECTRUM_MODE);
+  inside = (mouse_x >= bx) && (mouse_x <= bx + bw) && (mouse_y >= by) && (mouse_y <= by + bh);
+  clicked = inside && (mouse_cap & 1) && !(mouse_cap_prev & 1);
+  clicked ? (
+    mode = (mode + 1) % 4;
+    slider(SL_SPECTRUM_MODE) = mode;
+    slider_automate(slider(SL_SPECTRUM_MODE));
+  );
+
+  mode > 0 ? gfx_set(0.2, 0.65, 0.3, 1) : gfx_set(0.3, 0.3, 0.3, 1);
+  gfx_rect(bx, by, bw, bh);
+  gfx_set(0.8, 0.8, 0.8, 1);
+  gfx_rect(bx, by, bw, 1);
+  gfx_rect(bx, by + bh - 1, bw, 1);
+  gfx_rect(bx, by, 1, bh);
+  gfx_rect(bx + bw - 1, by, 1, bh);
+
+  gfx_x = bx + 6; gfx_y = by + 4;
+  gfx_printf("Spectrum: %s", mode == 0 ? "Off" : mode == 1 ? "Pre" : mode == 2 ? "Pre+Post" : "Post");
+);
+
+// small text-less capsule: green = active, red = muted; click toggles the mute slider idx
+function draw_active_toggle(bx, by, idx)
+local(muted, bw, bh)
+(
+  muted = slider(idx) > 0.5;
+  bw = 12; bh = 12;
+  gfx_set(muted ? 0.55 : 0.2, muted ? 0.2 : 0.55, 0.2, 1);
+  draw_capsule(bx, by, bw, bh);
+  (mouse_cap & 1) && !(mouse_cap_prev & 1) && mouse_x >= bx - bh / 2 && mouse_x <= bx + bw + bh / 2 && mouse_y >= by && mouse_y <= by + bh ? (
+    slider(idx) = muted ? 0 : 1;
+    slider_automate(slider(idx));
+  );
+);
+
+// on/off button backed by a slider; dim draws it faded when the setting is currently irrelevant
+function draw_slider_toggle(bx, by, bw, bh, label, idx, dim)
+local(inside, clicked, on, a)
+(
+  inside = (mouse_x >= bx) && (mouse_x <= bx + bw) && (mouse_y >= by) && (mouse_y <= by + bh);
+  clicked = inside && (mouse_cap & 1) && !(mouse_cap_prev & 1);
+  on = slider(idx) > 0.5;
+  clicked ? (
+    on = !on;
+    slider(idx) = on;
+    slider_automate(slider(idx));
+  );
+  a = dim ? 0.4 : 1;
+  on ? gfx_set(0.2, 0.65, 0.3, a) : gfx_set(0.3, 0.3, 0.3, a);
+  gfx_rect(bx, by, bw, bh);
+  gfx_set(0.8, 0.8, 0.8, a);
+  gfx_rect(bx, by, bw, 1);
+  gfx_rect(bx, by + bh - 1, bw, 1);
+  gfx_rect(bx, by, 1, bh);
+  gfx_rect(bx + bw - 1, by, 1, bh);
+  gfx_x = bx + 6; gfx_y = by + 4;
+  gfx_drawstr(label);
+);
+
+// button cycling the spectrum FFT size through 2048 / 4096 / 8192 / 16384
+function draw_fft_button(bx, by, bw, bh)
+local(inside, clicked, v)
+(
+  v = slider(SL_FFT_SIZE);
+  inside = (mouse_x >= bx) && (mouse_x <= bx + bw) && (mouse_y >= by) && (mouse_y <= by + bh);
+  clicked = inside && (mouse_cap & 1) && !(mouse_cap_prev & 1);
+  clicked ? (
+    v = (v + 1) % 4;
+    slider(SL_FFT_SIZE) = v;
+    slider_automate(slider(SL_FFT_SIZE));
+  );
+  gfx_set(0.3, 0.3, 0.3, 1);
+  gfx_rect(bx, by, bw, bh);
+  gfx_set(0.8, 0.8, 0.8, 1);
+  gfx_rect(bx, by, bw, 1);
+  gfx_rect(bx, by + bh - 1, bw, 1);
+  gfx_rect(bx, by, 1, bh);
+  gfx_rect(bx + bw - 1, by, 1, bh);
+  gfx_x = bx + 6; gfx_y = by + 4;
+  gfx_printf("FFT %d", 2048 * (2 ^ v));
+);
