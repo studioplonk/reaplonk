@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="plonk toolbox" commit="f68398d9980c11afb15ccf8c90076b7974a9ab00">
+<index version="1" name="plonk toolbox" commit="77ff0caba9ba0b90ee5906b10925bb796bd855c8">
   <category name="de-hum">
     <reapack name="de-hum.jsfx" type="effect" desc="de-hum (plonk.studio)">
       <metadata>
@@ -74,6 +74,20 @@
         <source>https://github.com/studioplonk/reaplonk/raw/f68398d9980c11afb15ccf8c90076b7974a9ab00/filterbank/filterbank.jsfx</source>
         <source file="Dependencies/spectrum.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f68398d9980c11afb15ccf8c90076b7974a9ab00/filterbank/Dependencies/spectrum.jsfx-inc</source>
         <source file="Dependencies/oversample_upsamplers.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/f68398d9980c11afb15ccf8c90076b7974a9ab00/filterbank/Dependencies/oversample_upsamplers.jsfx-inc</source>
+      </version>
+      <version name="1.3" author="LFSaw" time="2026-10-07T00:08:50Z">
+        <changelog><![CDATA[- Mute, gain, frequency and Q are now ramped at audio rate (previously
+  only once per block) and mute/gain are applied to each filter's input
+  rather than its output, so parameter changes - even large steps at
+  high Q - ring up/down naturally instead of clicking or zippering.
+- Added a tanh saturation/distortion option and a global gain offset
+  fader applying to all filters at once (wideband stays untouched by
+  both), via a new bottom panel.
+- Added a symbolic per-filter curve display (peak/Q/bandwidth markers)
+  as a lighter-weight alternative to the combined response curve.]]></changelog>
+        <source>https://github.com/studioplonk/reaplonk/raw/77ff0caba9ba0b90ee5906b10925bb796bd855c8/filterbank/filterbank.jsfx</source>
+        <source file="Dependencies/spectrum.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/77ff0caba9ba0b90ee5906b10925bb796bd855c8/filterbank/Dependencies/spectrum.jsfx-inc</source>
+        <source file="Dependencies/oversample_upsamplers.jsfx-inc">https://github.com/studioplonk/reaplonk/raw/77ff0caba9ba0b90ee5906b10925bb796bd855c8/filterbank/Dependencies/oversample_upsamplers.jsfx-inc</source>
       </version>
     </reapack>
   </category>
